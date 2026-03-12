@@ -223,7 +223,7 @@ export default function Sidebar({ onImport, onJoin, onShowMembers }: SidebarProp
 
         <div className="grid grid-cols-2 gap-1">
           <button
-            onClick={exportData}
+            onClick={() => activeCase && exportData(activeCase.id)}
             className="border border-white/10 text-gray-400 hover:bg-white/10 hover:text-blue-400 py-1.5 px-1 flex items-center justify-center gap-1 text-[9px] font-bold transition-all bg-white/5 rounded"
           >
             <Download size={10} />导出备份

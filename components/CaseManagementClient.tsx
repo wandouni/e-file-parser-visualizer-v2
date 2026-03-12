@@ -65,15 +65,6 @@ function CaseManagementInner() {
             />
           </div>
 
-          {/* 导出 */}
-          <button
-            onClick={exportData}
-            className="flex items-center gap-1.5 border rounded-lg px-3 py-1.5 text-xs transition-colors hover:bg-gray-50"
-            style={{ borderColor: 'var(--border)', color: 'var(--text2)' }}
-          >
-            <Download size={12} /> 导出备份
-          </button>
-
           {/* 恢复 */}
           <label className="flex items-center gap-1.5 border rounded-lg px-3 py-1.5 text-xs cursor-pointer transition-colors hover:bg-gray-50"
             style={{ borderColor: 'var(--border)', color: 'var(--text2)' }}>
@@ -152,6 +143,7 @@ function CaseManagementInner() {
                   onDeleteStart={() => setDeletingId(c.id)}
                   onDeleteCancel={() => setDeletingId(null)}
                   onDeleteConfirm={async () => { await deleteCase(c.id); setDeletingId(null) }}
+                  onExport={() => exportData(c.id)}
                 />
               ))}
             </tbody>
@@ -165,7 +157,7 @@ function CaseManagementInner() {
 function CaseRow({
   c, index, isEditing, editName, isDeleting,
   onRowClick, onEditStart, onEditChange, onEditSave, onEditCancel,
-  onDeleteStart, onDeleteCancel, onDeleteConfirm,
+  onDeleteStart, onDeleteCancel, onDeleteConfirm, onExport,
 }: {
   c: Case; index: number
   isEditing: boolean; editName: string
@@ -178,6 +170,7 @@ function CaseRow({
   onDeleteStart: () => void
   onDeleteCancel: () => void
   onDeleteConfirm: () => Promise<void>
+  onExport: () => void
 }) {
   const ROLE_LABEL: Record<string, string> = { owner: '所有者', editor: '编辑者', viewer: '只读' }
 
@@ -226,6 +219,9 @@ function CaseRow({
             </motion.div>
           ) : (
             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button onClick={onExport} className="p-1 rounded hover:bg-gray-100" title="导出备份">
+                <Download size={12} style={{ color: 'var(--text3)' }} />
+              </button>
               {c.myRole === 'owner' && (
                 <button onClick={onEditStart} className="p-1 rounded hover:bg-gray-100" title="重命名">
                   <Pencil size={12} style={{ color: 'var(--text3)' }} />

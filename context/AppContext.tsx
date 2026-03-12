@@ -34,7 +34,7 @@ interface AppContextValue {
   myRole: CaseRole | null
 
   // 导出/导入
-  exportData: () => Promise<void>
+  exportData: (caseId: string) => Promise<void>
   importData: (json: string) => Promise<void>
 }
 
@@ -164,29 +164,49 @@ export function AppProvider({ children, profile, initialCase }: { children: Reac
     setHistories((prev) => prev.map((h) => h.id === record.id ? record : h))
   }, [activeCaseId])
 
-  // 导出备份
-  const exportData = useCallback(async () => {
-    const payload = { cases, histories }
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+  // 导出备份 — 调用服务端接口，确保包含完整 rows
+  const exportData = useCallback(async (caseId: string) => {
+    const res = await fetch(`/api/export?caseId=${caseId}`)
+    if (!res.ok) { alert('导出失败'); return }
+    const blob = await res.blob()
     const url = URL.createObjectURL(blob)
+    const caseName = cases.find((c) => c.id === caseId)?.name ?? caseId
     const a = document.createElement('a')
     a.href = url
-    a.download = `grid_analysis_backup_${new Date().toISOString().slice(0, 10)}.json`
+    a.download = `backup_${caseName}_${new Date().toISOString().slice(0, 10)}.json`
     a.click()
     URL.revokeObjectURL(url)
-  }, [cases, histories])
+  }, [cases])
 
-  // 导入备份
+  // 导入备份 — 支持 v2 格式 { case, histories }；自动新建案例再批量写入
   const importData = useCallback(async (json: string) => {
-    // 简化版：解析并通过 API 导入
-    const payload = JSON.parse(json)
+    let payload: any
+    try { payload = JSON.parse(json) } catch { alert('文件格式错误'); return }
+
+    // 兼容 v2 格式（{ exportedAt, version, case, histories }）
+    const historiesArr: any[] = payload.histories ?? []
+    const caseName: string = payload.case?.name ?? `恢复备份_${new Date().toLocaleDateString('zh-CN')}`
+
     setLoading(true)
-    const res = await fetch('/api/import', {
+    // 第一步：建新案例
+    const caseRes = await fetch('/api/cases', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ name: caseName }),
     })
-    if (res.ok) await loadCases()
+    const { data: newCase, error: caseErr } = await caseRes.json()
+    if (caseErr || !newCase) { alert('创建案例失败：' + (caseErr?.message ?? '')); setLoading(false); return }
+
+    // 第二步：批量导入数据集
+    const importRes = await fetch('/api/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ caseId: newCase.id, histories: historiesArr }),
+    })
+    const { error: importErr } = await importRes.json()
+    if (importErr) { alert('导入数据失败：' + importErr.message); setLoading(false); return }
+
+    await loadCases()
     setLoading(false)
   }, [loadCases])
 
