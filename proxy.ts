@@ -1,81 +1,67 @@
-import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { jwtVerify } from 'jose'
+
+const JWT_SECRET = new TextEncoder().encode(
+  process.env.JWT_SECRET || 'dev-secret-change-in-production'
+)
+
+const PUBLIC_PATHS = [
+  '/login',
+  '/register',
+  '/api/auth/login',
+  '/api/auth/register',
+  '/api/auth/logout',
+  '/invite/',
+]
+
+async function getSessionUser(req: NextRequest) {
+  const token = req.cookies.get('session')?.value
+  if (!token) return null
+  try {
+    const { payload } = await jwtVerify(token, JWT_SECRET)
+    return payload as { id: string; email: string; username: string; isAdmin: boolean }
+  } catch {
+    return null
+  }
+}
 
 export async function proxy(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request })
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll()
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
-          )
-          supabaseResponse = NextResponse.next({ request })
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          )
-        },
-      },
-    }
-  )
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
   const { pathname } = request.nextUrl
 
-  // 未登录用户访问受保护路由 → 重定向登录
-  if (!user && (pathname.startsWith('/cases') || pathname.startsWith('/admin') || pathname.startsWith('/invite'))) {
-    const loginUrl = request.nextUrl.clone()
-    loginUrl.pathname = '/login'
-    loginUrl.searchParams.set('redirect', pathname)
-    return NextResponse.redirect(loginUrl)
+  // Allow public paths
+  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
+    return NextResponse.next()
   }
 
-  // 已登录用户访问 /admin → 检查 is_admin
-  if (user && pathname.startsWith('/admin')) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('is_admin, is_banned')
-      .eq('id', user.id)
-      .single()
+  const user = await getSessionUser(request)
 
-    if (!profile?.is_admin) {
-      return NextResponse.redirect(new URL('/cases', request.url))
+  // Not logged in → protect app routes
+  if (!user) {
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json({ data: null, error: { message: '未登录' } }, { status: 401 })
     }
+    if (pathname.startsWith('/cases') || pathname.startsWith('/admin') || pathname.startsWith('/invite')) {
+      const loginUrl = request.nextUrl.clone()
+      loginUrl.pathname = '/login'
+      loginUrl.searchParams.set('redirect', pathname)
+      return NextResponse.redirect(loginUrl)
+    }
+    return NextResponse.next()
   }
 
-  // 已登录用户访问登录/注册页 → 重定向首页
-  if (user && (pathname === '/login' || pathname === '/register')) {
+  // Logged-in users visiting login/register → redirect to app
+  if (pathname === '/login' || pathname === '/register') {
     return NextResponse.redirect(new URL('/cases', request.url))
   }
 
-  // 封禁用户 → 登出并重定向
-  if (user && !pathname.startsWith('/login')) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('is_banned')
-      .eq('id', user.id)
-      .single()
-
-    if (profile?.is_banned) {
-      await supabase.auth.signOut()
-      const loginUrl = new URL('/login', request.url)
-      loginUrl.searchParams.set('error', 'banned')
-      return NextResponse.redirect(loginUrl)
-    }
+  // Admin route guard
+  if (pathname.startsWith('/admin') && !user.isAdmin) {
+    return NextResponse.redirect(new URL('/cases', request.url))
   }
 
-  return supabaseResponse
+  return NextResponse.next()
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|api/).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 }

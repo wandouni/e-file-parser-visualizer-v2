@@ -22,20 +22,17 @@ export function Modal({ isOpen, onClose, children, title, width = '640px', heigh
   if (!isOpen) return null
 
   return createPortal(
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div
-        className="bg-white shadow-2xl flex flex-col max-h-[90vh] overflow-hidden rounded-lg border"
-        style={{ width, height, borderColor: 'var(--border)' }}
-      >
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ background: '#fff', boxShadow: '0 20px 60px rgba(0,0,0,0.2)', display: 'flex', flexDirection: 'column', width, height: height || 'auto', maxHeight: '92vh', overflow: 'hidden', borderRadius: 10, border: '1px solid #e2e8f0' }}>
         {title && (
-          <div className="flex items-center justify-between px-4 py-2.5 border-b shrink-0" style={{ borderColor: 'var(--border)', background: '#f8fafc' }}>
-            <h3 className="text-xs font-bold" style={{ color: 'var(--text)' }}>{title}</h3>
-            <button onClick={onClose} className="p-1 rounded hover:bg-red-50 transition-colors" style={{ color: 'var(--text3)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', borderBottom: '1px solid #e2e8f0', background: '#f8fafc', flexShrink: 0 }}>
+            <h3 style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', margin: 0 }}>{title}</h3>
+            <button onClick={onClose} style={{ padding: 4, border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', alignItems: 'center', borderRadius: 4 }}>
               <X size={15} />
             </button>
           </div>
         )}
-        <div className="flex-1 overflow-auto">{children}</div>
+        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>{children}</div>
       </div>
     </div>,
     document.body
@@ -57,19 +54,25 @@ export function ConfirmModal({ isOpen, onClose, onConfirm, title, message, confi
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+      style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(0,0,0,0.55)' }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="bg-white shadow-2xl border rounded-xl w-full max-w-sm overflow-hidden" style={{ borderColor: 'var(--border)' }}>
-        <div className="p-6">
-          {title && <p className="text-sm font-bold mb-2" style={{ color: 'var(--text)' }}>{title}</p>}
-          <p className="text-xs leading-relaxed" style={{ color: 'var(--text2)' }}>{message}</p>
+      <div style={{ background: '#fff', borderRadius: 10, boxShadow: '0 8px 32px rgba(0,0,0,0.18)', width: '100%', maxWidth: 280, overflow: 'hidden' }}>
+        <div style={{ padding: '14px 16px 12px' }}>
+          {title && <p style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', margin: '0 0 4px' }}>{title}</p>}
+          <p style={{ fontSize: 12, color: '#64748b', margin: 0, lineHeight: 1.5 }}>{message}</p>
         </div>
-        <div className="flex border-t" style={{ borderColor: 'var(--border)' }}>
-          <button onClick={onClose} className="flex-1 px-4 py-3 text-xs font-medium hover:bg-gray-50 transition-colors border-r" style={{ color: 'var(--text2)', borderColor: 'var(--border)' }}>
+        <div style={{ display: 'flex', gap: 8, padding: '0 12px 12px', justifyContent: 'flex-end' }}>
+          <button
+            onClick={onClose}
+            style={{ padding: '5px 14px', fontSize: 12, fontWeight: 500, color: '#475569', background: '#f1f5f9', border: 'none', borderRadius: 6, cursor: 'pointer' }}
+          >
             {cancelText}
           </button>
-          <button onClick={onConfirm} className="flex-1 px-4 py-3 text-xs font-medium hover:bg-blue-50 transition-colors" style={{ color: 'var(--accent)' }}>
+          <button
+            onClick={onConfirm}
+            style={{ padding: '5px 14px', fontSize: 12, fontWeight: 600, color: '#fff', background: '#ef4444', border: 'none', borderRadius: 6, cursor: 'pointer' }}
+          >
             {confirmText}
           </button>
         </div>

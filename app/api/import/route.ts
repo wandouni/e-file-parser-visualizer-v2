@@ -1,56 +1,57 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { db } from '@/lib/db'
+import { histories, caseMembers } from '@/lib/db/schema'
+import { getUser } from '@/lib/auth/session'
+import { eq, and, max } from 'drizzle-orm'
 
 export async function POST(req: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getUser()
   if (!user) return NextResponse.json({ error: { message: 'Unauthorized' } }, { status: 401 })
 
-  const { caseId, histories } = await req.json()
-  if (!caseId || !Array.isArray(histories)) {
+  const { caseId, histories: historiesData } = await req.json()
+  if (!caseId || !Array.isArray(historiesData)) {
     return NextResponse.json({ error: { message: 'caseId and histories[] required' } }, { status: 400 })
   }
 
   // Verify owner
-  const { data: membership } = await supabase
-    .from('case_members')
-    .select('role')
-    .eq('case_id', caseId)
-    .eq('user_id', user.id)
-    .single()
+  const [membership] = await db
+    .select({ role: caseMembers.role })
+    .from(caseMembers)
+    .where(and(eq(caseMembers.caseId, caseId), eq(caseMembers.userId, user.id)))
+
   if (!membership || membership.role !== 'owner') {
     return NextResponse.json({ error: { message: 'Only owner can restore backup' } }, { status: 403 })
   }
 
   // Get current max sort_order
-  const { data: existing } = await supabase
-    .from('histories')
-    .select('sort_order')
-    .eq('case_id', caseId)
-    .order('sort_order', { ascending: false })
-    .limit(1)
-  const baseOrder = (existing?.[0]?.sort_order ?? -1) + 1
+  const [maxRow] = await db
+    .select({ maxOrder: max(histories.sortOrder) })
+    .from(histories)
+    .where(eq(histories.caseId, caseId))
 
-  const records = histories.map((h: any, i: number) => ({
-    case_id: caseId,
-    imported_by: user.id,
-    import_time: h.import_time || new Date().toISOString(),
-    section_tag: h.section_tag,
+  const baseOrder = (maxRow?.maxOrder ?? -1) + 1
+
+  const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
+
+  const records = historiesData.map((h: any, i: number) => ({
+    id: crypto.randomUUID(),
+    caseId,
+    importedBy: user.id,
+    importTime: h.import_time || now,
+    sectionTag: h.section_tag,
     meta: h.meta ?? {},
     fields: h.fields ?? [],
     labels: h.labels ?? [],
     rows: h.rows ?? [],
-    col_config: h.col_config ?? {},
-    page_size: h.page_size ?? 20,
-    viz_configs: h.viz_configs ?? [],
-    sort_order: baseOrder + i,
+    colConfig: h.col_config ?? {},
+    pageSize: h.page_size ?? 20,
+    vizConfigs: h.viz_configs ?? [],
+    sortOrder: baseOrder + i,
   }))
 
-  const { data, error } = await supabase
-    .from('histories')
-    .insert(records)
-    .select()
-  if (error) return NextResponse.json({ error }, { status: 500 })
+  if (records.length > 0) {
+    await db.insert(histories).values(records)
+  }
 
-  return NextResponse.json({ data: { imported: data?.length ?? 0 } })
+  return NextResponse.json({ data: { imported: records.length } })
 }

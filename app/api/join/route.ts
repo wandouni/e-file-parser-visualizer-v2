@@ -1,11 +1,14 @@
-import { createClient } from '@/lib/supabase/server'
+import { db } from '@/lib/db'
+import { histories, caseMembers } from '@/lib/db/schema'
+import { getUser } from '@/lib/auth/session'
+import { historyToApi } from '@/lib/db/helpers'
 import { ok, err, applyFilters } from '@/lib/utils'
 import type { Row, JoinFilter } from '@/types'
+import { eq, and, max } from 'drizzle-orm'
 
 // POST /api/join — 多表关联
 export async function POST(request: Request) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getUser()
   if (!user) return err('未登录', 401)
 
   const body = await request.json()
@@ -24,20 +27,23 @@ export async function POST(request: Request) {
   } = body
 
   // 权限检查
-  const { data: member } = await supabase
-    .from('case_members')
-    .select('role')
-    .eq('case_id', caseId)
-    .eq('user_id', user.id)
-    .single()
+  const [member] = await db
+    .select({ role: caseMembers.role })
+    .from(caseMembers)
+    .where(and(eq(caseMembers.caseId, caseId), eq(caseMembers.userId, user.id)))
 
   if (!member || member.role === 'viewer') return err('无操作权限', 403)
 
   // 获取两张表的完整数据
-  const [{ data: leftData }, { data: rightData }] = await Promise.all([
-    supabase.from('histories').select('fields, labels, rows').eq('id', leftHistoryId).single(),
-    supabase.from('histories').select('fields, labels, rows').eq('id', rightHistoryId).single(),
-  ])
+  const [leftData] = await db
+    .select({ fields: histories.fields, labels: histories.labels, rows: histories.rows })
+    .from(histories)
+    .where(eq(histories.id, leftHistoryId))
+
+  const [rightData] = await db
+    .select({ fields: histories.fields, labels: histories.labels, rows: histories.rows })
+    .from(histories)
+    .where(eq(histories.id, rightHistoryId))
 
   if (!leftData || !rightData) return err('数据集不存在', 404)
 
@@ -71,9 +77,7 @@ export async function POST(request: Request) {
   for (const f of rightFields) {
     let outputName = f
     let suffix = 2
-    while (outputFields.includes(outputName)) {
-      outputName = `${f}_${suffix++}`
-    }
+    while (outputFields.includes(outputName)) outputName = `${f}_${suffix++}`
     outputFields.push(outputName)
     const label = getLabel(rightData.fields, rightData.labels, f)
     outputLabels.push(outputName !== f ? `${label}(右)` : label)
@@ -100,32 +104,30 @@ export async function POST(request: Request) {
   const colConfig: Record<string, boolean> = {}
   outputFields.forEach((f) => (colConfig[f] = true))
 
-  const { data: maxRow } = await supabase
-    .from('histories')
-    .select('sort_order')
-    .eq('case_id', caseId)
-    .order('sort_order', { ascending: false })
-    .limit(1)
-    .single()
+  const [maxRow] = await db
+    .select({ maxOrder: max(histories.sortOrder) })
+    .from(histories)
+    .where(eq(histories.caseId, caseId))
 
-  const { data: saved, error: saveError } = await supabase
-    .from('histories')
-    .insert({
-      case_id: caseId,
-      imported_by: user.id,
-      section_tag: resultName || `join_result`,
-      meta: { Joined: 'True' },
-      fields: outputFields,
-      labels: outputLabels,
-      rows: resultRows,
-      col_config: colConfig,
-      page_size: 20,
-      viz_configs: [],
-      sort_order: (maxRow?.sort_order ?? 0) + 1,
-    })
-    .select()
-    .single()
+  const id = crypto.randomUUID()
+  const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
 
-  if (saveError) return err(saveError.message, 500)
-  return ok(saved)
+  await db.insert(histories).values({
+    id,
+    caseId,
+    importedBy: user.id,
+    importTime: now,
+    sectionTag: resultName || 'join_result',
+    meta: { Joined: 'True' },
+    fields: outputFields,
+    labels: outputLabels,
+    rows: resultRows,
+    colConfig,
+    pageSize: 20,
+    vizConfigs: [],
+    sortOrder: (maxRow?.maxOrder ?? -1) + 1,
+  })
+
+  const [saved] = await db.select().from(histories).where(eq(histories.id, id))
+  return ok(historyToApi(saved))
 }

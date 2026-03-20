@@ -1,21 +1,23 @@
-import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
-import Link from 'next/link'
-
 export const dynamic = 'force-dynamic'
 
+import { redirect } from 'next/navigation'
+import { getUser } from '@/lib/auth/session'
+import { db } from '@/lib/db'
+import { profiles } from '@/lib/db/schema'
+import { eq } from 'drizzle-orm'
+import Link from 'next/link'
+
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getUser()
   if (!user) redirect('/login')
+  if (!user.isAdmin) redirect('/cases')
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('username, display_name, is_admin')
-    .eq('id', user.id)
-    .single()
+  const [profile] = await db
+    .select({ username: profiles.username, displayName: profiles.displayName })
+    .from(profiles)
+    .where(eq(profiles.id, user.id))
 
-  if (!profile?.is_admin) redirect('/cases')
+  const displayName = profile?.displayName || profile?.username || user.username
 
   return (
     <div className="min-h-screen flex" style={{ background: 'var(--bg-main)' }}>
@@ -23,7 +25,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       <aside className="w-48 shrink-0 border-r flex flex-col" style={{ borderColor: 'var(--border)', background: 'var(--bg-sidebar)' }}>
         <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
           <p className="text-[10px] font-bold" style={{ color: 'var(--accent)' }}>ADMIN PANEL</p>
-          <p className="text-[9px] mt-0.5" style={{ color: 'var(--text3)' }}>{profile.display_name || profile.username}</p>
+          <p className="text-[9px] mt-0.5" style={{ color: 'var(--text3)' }}>{displayName}</p>
         </div>
         <nav className="flex-1 p-2 space-y-0.5">
           {[

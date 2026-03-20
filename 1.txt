@@ -1,0 +1,48 @@
+  ---
+  还需要做的事
+
+  一、基础设施（上线前必做）
+
+  1. 创建 Supabase 项目 + 填写 .env.local
+    - 在 supabase.com 建项目
+    - 执行 supabase/migrations/001_init.sql
+    - 在 Supabase Dashboard → Database → Replication 里手动开启 histories 和 case_members 两张表的 Realtime
+    - 把真实的 URL/ANON_KEY/SERVICE_ROLE_KEY 填入 .env.local
+  2. Vercel 部署配置
+    - 在 Vercel 项目里填入同套环境变量
+    - Supabase Auth → Site URL 设为生产域名
+    - Supabase Auth → Redirect URLs 加上 https://你的域名/api/auth/wechat/callback
+  3. 微信开放平台（可选，先用账号密码登录）
+    - 需要企业主体认证 + ICP 备案域名才能申请网站应用
+    - 代码已完整，就差填 WECHAT_APP_ID 和 WECHAT_APP_SECRET
+
+  ---
+  二、代码层面的小问题
+
+  4. proxy.ts 对每个页面请求都查一次数据库判断 is_banned（性能隐患）
+    - 当前对所有非 /login 路由都会执行一次 SELECT is_banned FROM profiles
+    - 建议：只在 /admin 和敏感路由检查，普通页面依赖 session token 即可
+  5. /api/cases 的 GET 对每个案例各发 2 条 COUNT 查询（N+1 查询）
+    - 10 个案例 = 20 次额外查询
+    - 建议：改用一条 SQL 用 COUNT + GROUP BY 或 Supabase 的聚合 join 一次取完
+  6. Realtime INSERT 时新记录插在列表最前面，但实际应按 sort_order 排
+    - AppContext.tsx:233：return [record, ...prev] 未排序
+
+  ---
+  三、功能完整性
+
+  7. /admin/cases 页面用了不存在的 join 关系 profiles!cases_owner_id_fkey
+    - 如果 Supabase 自动推断外键名不匹配会 fallback 到简单查询（owner_username
+  字段会是空），需要实际连接后验证
+  8. 案例列表的「文件数」列（historyCount）目前每次 loadCases
+  才更新，导入新文件后侧边栏立即刷新但案例列表不刷新 — 体验小问题，非阻断性
+  9. 没有「忘记密码」功能 — 纯账号密码登录但没有找回密码入口，用户一旦忘记密码只能靠管理员重置
+
+  ---
+  四、部署文档
+
+  10. README.md 是 create-next-app 的默认内容，没有项目说明、部署步骤、环境变量说明
+
+  ---
+  总结：代码本身基本完整，主要就是第 1-2 条基础设施配置才能跑起来，4-6 条是性能优化，其余是锦上添花。
+  要不要现在先搞定哪几条？

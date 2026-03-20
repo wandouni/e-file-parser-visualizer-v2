@@ -1,5 +1,8 @@
-import { createClient } from '@/lib/supabase/server'
+import { db } from '@/lib/db'
+import { caseInvites, caseMembers, cases } from '@/lib/db/schema'
+import { getUser } from '@/lib/auth/session'
 import { ok, err } from '@/lib/utils'
+import { eq, and } from 'drizzle-orm'
 
 // GET /api/invite/:token — 验证并使用邀请链接
 export async function GET(
@@ -7,55 +10,50 @@ export async function GET(
   { params }: { params: Promise<{ token: string }> }
 ) {
   const { token } = await params
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getUser()
   if (!user) return err('未登录', 401)
 
-  // 查找邀请记录
-  const { data: invite, error: inviteError } = await supabase
-    .from('case_invites')
-    .select('*, case:cases(id, name)')
-    .eq('token', token)
-    .single()
+  const [invite] = await db
+    .select()
+    .from(caseInvites)
+    .where(eq(caseInvites.token, token))
 
-  if (inviteError || !invite) return err('邀请链接不存在', 404)
+  if (!invite) return err('邀请链接不存在', 404)
 
-  // 检查过期
-  if (new Date(invite.expires_at) < new Date()) {
-    return err('邀请链接已过期', 410)
-  }
+  if (new Date(invite.expiresAt) < new Date()) return err('邀请链接已过期', 410)
 
-  // 检查使用次数
-  if (invite.max_uses !== null && invite.use_count >= invite.max_uses) {
+  if (invite.maxUses !== null && invite.useCount >= invite.maxUses) {
     return err('邀请链接已达使用上限', 410)
   }
 
-  const caseId = invite.case_id
+  const caseId = invite.caseId
+
+  // Fetch case info
+  const [caseData] = await db.select({ id: cases.id, name: cases.name }).from(cases).where(eq(cases.id, caseId))
 
   // 检查是否已是成员
-  const { data: existing } = await supabase
-    .from('case_members')
-    .select('id, role')
-    .eq('case_id', caseId)
-    .eq('user_id', user.id)
-    .single()
+  const [existing] = await db
+    .select({ id: caseMembers.id, role: caseMembers.role })
+    .from(caseMembers)
+    .where(and(eq(caseMembers.caseId, caseId), eq(caseMembers.userId, user.id)))
 
   if (existing) {
-    return ok({ alreadyMember: true, caseId, role: existing.role, case: invite.case })
+    return ok({ alreadyMember: true, caseId, role: existing.role, case: caseData })
   }
 
   // 加入案例
-  const { error: joinError } = await supabase
-    .from('case_members')
-    .insert({ case_id: caseId, user_id: user.id, role: invite.role })
-
-  if (joinError) return err(joinError.message, 500)
+  await db.insert(caseMembers).values({
+    id: crypto.randomUUID(),
+    caseId,
+    userId: user.id,
+    role: invite.role,
+  })
 
   // 更新使用次数
-  await supabase
-    .from('case_invites')
-    .update({ use_count: invite.use_count + 1 })
-    .eq('id', invite.id)
+  await db
+    .update(caseInvites)
+    .set({ useCount: invite.useCount + 1 })
+    .where(eq(caseInvites.id, invite.id))
 
-  return ok({ alreadyMember: false, caseId, role: invite.role, case: invite.case })
+  return ok({ alreadyMember: false, caseId, role: invite.role, case: caseData })
 }

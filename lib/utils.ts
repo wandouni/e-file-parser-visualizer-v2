@@ -67,11 +67,15 @@ export function applyFilters(rows: Row[], filters: VizFilter[] | JoinFilter[]): 
 }
 
 // 默认中文日期案例名
-export function defaultCaseName(): string {
+export function defaultCaseName(username?: string): string {
   const now = new Date()
   const m = now.getMonth() + 1
   const d = now.getDate()
-  return `案例 ${m}月${d}日`
+  const hh = String(now.getHours()).padStart(2, '0')
+  const mm = String(now.getMinutes()).padStart(2, '0')
+  const ss = String(now.getSeconds()).padStart(2, '0')
+  const prefix = username ? `${username}_` : ''
+  return `${prefix}案例_${m}月${d}日_${hh}:${mm}:${ss}`
 }
 
 // API 响应帮助函数

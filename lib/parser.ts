@@ -29,6 +29,22 @@ export function parseText(raw: string, fileName: string = ''): ParseResult {
   // 3. Fields
   const fieldsMatch = raw.match(/^@[ \t]+(.+)$/m)
   if (!fieldsMatch) {
+    // 如果文件含有 E 文件标志（<!...!> 或行首 <Tag> 结构）但没有表定义，
+    // 说明是合法的空数据集文件（如 HydroPlantWaterLvlReason.txt），允许导入为空记录
+    // 注：要求 < 在行首，避免匹配日志文件中间的 < 字符（如 C++ 函数签名）
+    const hasEFileMarker = /^[ \t]*<[!！]/m.test(raw) || /^[ \t]*<[A-Za-z][\w]*?[\s>]/m.test(raw)
+    if (hasEFileMarker) {
+      return {
+        ok: true,
+        record: {
+          sectionTag: sectionTag || (fileName ? fileName.replace(/\.[^/.]+$/, '') : '未命名'),
+          meta,
+          fields: [],
+          labels: [],
+          rows: [],
+        },
+      }
+    }
     return { ok: false, msg: '未找到字段定义行 (@ Field1 Field2...)' }
   }
   const rawFields = fieldsMatch[1].trim().split(/\s+/)
@@ -77,10 +93,7 @@ export function parseText(raw: string, fileName: string = ''): ParseResult {
     rows.push(row)
   }
 
-  if (rows.length === 0) {
-    return { ok: false, msg: '未解析到数据行' }
-  }
-
+  // rows 为空时仍允许导入（文件格式合法但该数据集在本次计算中无记录）
   return {
     ok: true,
     record: {

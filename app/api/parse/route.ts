@@ -1,10 +1,9 @@
-import { createClient } from '@/lib/supabase/server'
+import { getUser } from '@/lib/auth/session'
 import { parseText } from '@/lib/parser'
 import { ok, err } from '@/lib/utils'
 
 export async function POST(request: Request) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getUser()
   if (!user) return err('未登录', 401)
 
   const body = await request.json()

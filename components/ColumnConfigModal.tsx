@@ -11,53 +11,61 @@ interface Props {
 }
 
 export default function ColumnConfigModal({ onClose, record }: Props) {
-  const { updateHistory } = useApp()
+  const { updateHistory, showToast } = useApp()
   const [tempConfig, setTempConfig] = useState<Record<string, boolean>>({})
 
   useEffect(() => { setTempConfig({ ...record.colConfig }) }, [record])
 
   function handleApply() {
     updateHistory({ ...record, colConfig: tempConfig })
+    showToast('显示配置已保存')
     onClose()
   }
 
   const selected = Object.values(tempConfig).filter(Boolean).length
 
   return (
-    <Modal isOpen onClose={onClose} title="列显示配置" width="500px" height="80vh">
-      <div className="flex flex-col h-full bg-white">
+    <Modal isOpen onClose={onClose} title="列显示配置" width="480px" height="70vh">
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: '#fff' }}>
+
         {/* 操作栏 */}
-        <div className="flex items-center justify-between px-4 py-2 border-b shrink-0" style={{ borderColor: 'var(--border)', background: '#f8fafc' }}>
-          <div className="flex gap-4">
-            <button onClick={() => { const c: Record<string, boolean> = {}; record.fields.forEach((f) => (c[f] = true)); setTempConfig(c) }}
-              className="text-xs font-medium" style={{ color: 'var(--accent)' }}>全选</button>
-            <button onClick={() => { const c: Record<string, boolean> = {}; record.fields.forEach((f) => (c[f] = false)); setTempConfig(c) }}
-              className="text-xs font-medium" style={{ color: 'var(--text2)' }}>隐藏</button>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 16px', borderBottom: '1px solid #e2e8f0', background: '#f8fafc', flexShrink: 0 }}>
+          <div style={{ display: 'flex', gap: 16 }}>
+            <button
+              onClick={() => { const c: Record<string, boolean> = {}; record.fields.forEach((f) => (c[f] = true)); setTempConfig(c) }}
+              style={{ fontSize: 12, fontWeight: 600, color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+            >全选</button>
+            <button
+              onClick={() => { const c: Record<string, boolean> = {}; record.fields.forEach((f) => (c[f] = false)); setTempConfig(c) }}
+              style={{ fontSize: 12, fontWeight: 600, color: '#475569', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+            >全隐藏</button>
           </div>
-          <span className="text-[10px]" style={{ color: 'var(--text3)' }}>已选择 {selected} / {record.fields.length}</span>
+          <span style={{ fontSize: 11, color: '#94a3b8' }}>已选 {selected} / {record.fields.length} 列</span>
         </div>
 
         {/* 复选框网格 */}
-        <div className="flex-1 overflow-y-auto p-4">
-          <div className="grid grid-cols-2 gap-2">
+        <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             {record.fields.map((field, i) => (
               <label
                 key={field}
-                className="flex items-center gap-2 cursor-pointer p-2 border rounded-lg transition-all"
                 style={{
-                  borderColor: tempConfig[field] ? 'var(--accent)' : 'var(--border)',
-                  background: tempConfig[field] ? 'var(--accent-light)' : 'white',
+                  display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
+                  padding: '8px 10px', border: `1px solid ${tempConfig[field] ? '#2563eb' : '#e2e8f0'}`,
+                  borderRadius: 8, background: tempConfig[field] ? '#eff6ff' : '#fff',
+                  transition: 'border-color 0.12s, background 0.12s',
                 }}
               >
                 <input
                   type="checkbox"
                   checked={!!tempConfig[field]}
                   onChange={() => setTempConfig((prev) => ({ ...prev, [field]: !prev[field] }))}
-                  className="w-3.5 h-3.5"
-                  style={{ accentColor: 'var(--accent)' }}
+                  style={{ width: 14, height: 14, accentColor: '#2563eb', flexShrink: 0 }}
                 />
-                <span className="text-[11px] font-medium truncate" style={{ color: tempConfig[field] ? 'var(--accent)' : 'var(--text2)' }}
-                  title={record.labels[i] || field}>
+                <span
+                  style={{ fontSize: 11, fontWeight: 500, color: tempConfig[field] ? '#2563eb' : '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                  title={record.labels[i] || field}
+                >
                   {record.labels[i] || field}
                 </span>
               </label>
@@ -66,11 +74,15 @@ export default function ColumnConfigModal({ onClose, record }: Props) {
         </div>
 
         {/* 底部按钮 */}
-        <div className="p-4 border-t shrink-0 flex justify-end gap-2" style={{ borderColor: 'var(--border)', background: '#f8fafc' }}>
-          <button onClick={onClose} className="px-5 py-1.5 text-xs font-medium border rounded-lg hover:bg-gray-50 transition-colors"
-            style={{ borderColor: 'var(--border)', color: 'var(--text2)' }}>取消</button>
-          <button onClick={handleApply} className="px-6 py-1.5 text-xs font-medium text-white rounded-lg transition-opacity hover:opacity-90"
-            style={{ background: 'var(--accent)' }}>应用配置</button>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '12px 16px', borderTop: '1px solid #e2e8f0', background: '#f8fafc', flexShrink: 0 }}>
+          <button
+            onClick={onClose}
+            style={{ padding: '7px 20px', fontSize: 12, fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#475569', cursor: 'pointer' }}
+          >取消</button>
+          <button
+            onClick={handleApply}
+            style={{ padding: '7px 24px', fontSize: 12, fontWeight: 600, border: 'none', borderRadius: 8, background: '#2563eb', color: '#fff', cursor: 'pointer' }}
+          >应用配置</button>
         </div>
       </div>
     </Modal>

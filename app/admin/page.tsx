@@ -1,29 +1,23 @@
 export const dynamic = 'force-dynamic'
 
-import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/server'
+import { db } from '@/lib/db'
+import { profiles, cases, histories } from '@/lib/db/schema'
+import { eq, gte, count } from 'drizzle-orm'
 
 async function getStats() {
-  const admin = await createAdminClient()
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
 
-  const [users, cases, histories, recentUsers, recentCases, bannedUsers] = await Promise.all([
-    admin.from('profiles').select('id', { count: 'exact', head: true }),
-    admin.from('cases').select('id', { count: 'exact', head: true }),
-    admin.from('histories').select('id', { count: 'exact', head: true }),
-    admin.from('profiles').select('id', { count: 'exact', head: true }).gte('created_at', sevenDaysAgo),
-    admin.from('cases').select('id', { count: 'exact', head: true }).gte('created_at', sevenDaysAgo),
-    admin.from('profiles').select('id', { count: 'exact', head: true }).eq('is_banned', true),
-  ])
+  const [[{ totalUsers }], [{ totalCases }], [{ totalHistories }], [{ recentUsers }], [{ recentCases }], [{ bannedUsers }]] =
+    await Promise.all([
+      db.select({ totalUsers: count() }).from(profiles),
+      db.select({ totalCases: count() }).from(cases),
+      db.select({ totalHistories: count() }).from(histories),
+      db.select({ recentUsers: count() }).from(profiles).where(gte(profiles.createdAt, sevenDaysAgo)),
+      db.select({ recentCases: count() }).from(cases).where(gte(cases.createdAt, sevenDaysAgo)),
+      db.select({ bannedUsers: count() }).from(profiles).where(eq(profiles.isBanned, true)),
+    ])
 
-  return {
-    totalUsers: users.count ?? 0,
-    totalCases: cases.count ?? 0,
-    totalHistories: histories.count ?? 0,
-    recentUsers: recentUsers.count ?? 0,
-    recentCases: recentCases.count ?? 0,
-    bannedUsers: bannedUsers.count ?? 0,
-  }
+  return { totalUsers, totalCases, totalHistories, recentUsers, recentCases, bannedUsers }
 }
 
 export default async function AdminDashboard() {

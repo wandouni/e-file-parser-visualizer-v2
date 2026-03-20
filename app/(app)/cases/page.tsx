@@ -1,18 +1,31 @@
 export const dynamic = 'force-dynamic'
 
-import { createClient } from '@/lib/supabase/server'
+import { getUser } from '@/lib/auth/session'
+import { db } from '@/lib/db'
+import { profiles } from '@/lib/db/schema'
+import { eq } from 'drizzle-orm'
 import CaseManagementClient from '@/components/CaseManagementClient'
+import type { Profile } from '@/types'
 
 export default async function CasesPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getUser()
+  if (!user) return null
 
-  // 获取用户 profile
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user!.id)
-    .single()
+  const [p] = await db.select().from(profiles).where(eq(profiles.id, user.id))
+
+  const profile: Profile | null = p
+    ? {
+        id: p.id,
+        username: p.username,
+        displayName: p.displayName,
+        avatarUrl: null,
+        wechatOpenid: null,
+        isAdmin: p.isAdmin,
+        isBanned: p.isBanned,
+        createdAt: p.createdAt,
+        updatedAt: p.createdAt,
+      }
+    : null
 
   return <CaseManagementClient profile={profile} />
 }

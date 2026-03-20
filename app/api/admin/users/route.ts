@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createAdminClient } from '@/lib/supabase/server'
+import { db } from '@/lib/db'
+import { profiles } from '@/lib/db/schema'
+import { getUser } from '@/lib/auth/session'
+import { eq, desc, like, count, sql } from 'drizzle-orm'
 
 async function requireAdmin() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-  const { data: profile } = await supabase.from('profiles').select('is_admin').eq('id', user.id).single()
-  if (!profile?.is_admin) return null
+  const user = await getUser()
+  if (!user || !user.isAdmin) return null
   return user
 }
 
@@ -14,23 +14,34 @@ export async function GET(req: NextRequest) {
   const caller = await requireAdmin()
   if (!caller) return NextResponse.json({ error: { message: 'Forbidden' } }, { status: 403 })
 
-  const admin = await createAdminClient()
   const { searchParams } = new URL(req.url)
   const page = parseInt(searchParams.get('page') ?? '1')
   const pageSize = 20
   const search = searchParams.get('q') ?? ''
+  const offset = (page - 1) * pageSize
 
-  let query = admin.from('profiles')
-    .select('id, username, display_name, avatar_url, is_admin, is_banned, created_at', { count: 'exact' })
-    .order('created_at', { ascending: false })
-    .range((page - 1) * pageSize, page * pageSize - 1)
+  const [{ total }] = await db
+    .select({ total: count() })
+    .from(profiles)
+    .where(search ? like(profiles.username, `%${search}%`) : undefined)
 
-  if (search) query = query.ilike('username', `%${search}%`)
+  const rows = await db
+    .select({
+      id: profiles.id,
+      username: profiles.username,
+      display_name: profiles.displayName,
+      email: profiles.email,
+      is_admin: profiles.isAdmin,
+      is_banned: profiles.isBanned,
+      created_at: profiles.createdAt,
+    })
+    .from(profiles)
+    .where(search ? like(profiles.username, `%${search}%`) : undefined)
+    .orderBy(desc(profiles.createdAt))
+    .limit(pageSize)
+    .offset(offset)
 
-  const { data, count, error } = await query
-  if (error) return NextResponse.json({ error }, { status: 500 })
-
-  return NextResponse.json({ data, meta: { total: count ?? 0, page, pageSize } })
+  return NextResponse.json({ data: rows, meta: { total, page, pageSize } })
 }
 
 export async function PATCH(req: NextRequest) {
@@ -40,13 +51,15 @@ export async function PATCH(req: NextRequest) {
   const { userId, is_banned, is_admin } = await req.json()
   if (!userId) return NextResponse.json({ error: { message: 'userId required' } }, { status: 400 })
 
-  const admin = await createAdminClient()
   const updates: Record<string, boolean> = {}
-  if (is_banned !== undefined) updates.is_banned = is_banned
-  if (is_admin !== undefined) updates.is_admin = is_admin
+  if (is_banned !== undefined) updates.isBanned = is_banned
+  if (is_admin !== undefined) updates.isAdmin = is_admin
 
-  const { error } = await admin.from('profiles').update(updates).eq('id', userId)
-  if (error) return NextResponse.json({ error }, { status: 500 })
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json({ error: { message: 'no fields to update' } }, { status: 400 })
+  }
+
+  await db.update(profiles).set(updates).where(eq(profiles.id, userId))
 
   return NextResponse.json({ data: { ok: true } })
 }

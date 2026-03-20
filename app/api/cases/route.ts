@@ -1,69 +1,60 @@
-import { createClient } from '@/lib/supabase/server'
+import { db } from '@/lib/db'
+import { cases, caseMembers, histories } from '@/lib/db/schema'
+import { getUser } from '@/lib/auth/session'
 import { ok, err, defaultCaseName } from '@/lib/utils'
+import { eq, desc, count } from 'drizzle-orm'
 
-// GET /api/cases — 获取当前用户所有案例
+// GET /api/cases — 获取当前用户的所有案例
 export async function GET() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getUser()
   if (!user) return err('未登录', 401)
 
-  const { data, error } = await supabase
-    .from('case_members')
-    .select(`
-      role,
-      case:cases (
-        id, name, owner_id, created_at, updated_at
-      )
-    `)
-    .eq('user_id', user.id)
-    .order('joined_at', { ascending: false })
+  const rows = await db
+    .select()
+    .from(cases)
+    .where(eq(cases.ownerId, user.id))
+    .orderBy(desc(cases.createdAt))
 
-  if (error) return err(error.message, 500)
+  const result = await Promise.all(
+    rows.map(async (c) => {
+      const [{ historyCount }] = await db
+        .select({ historyCount: count() })
+        .from(histories)
+        .where(eq(histories.caseId, c.id))
 
-  // 附加每个案例的成员数和历史记录数
-  const cases = await Promise.all(
-    (data || []).map(async (item: any) => {
-      const c = item.case
-      const [{ count: memberCount }, { count: historyCount }] = await Promise.all([
-        supabase.from('case_members').select('*', { count: 'exact', head: true }).eq('case_id', c.id),
-        supabase.from('histories').select('*', { count: 'exact', head: true }).eq('case_id', c.id),
-      ])
       return {
-        ...c,
-        myRole: item.role,
-        memberCount: memberCount ?? 0,
+        id: c.id,
+        name: c.name,
+        ownerId: c.ownerId,
+        createdAt: c.createdAt,
+        updatedAt: c.updatedAt,
+        myRole: 'owner',
         historyCount: historyCount ?? 0,
       }
     })
   )
 
-  return ok(cases)
+  return ok(result)
 }
 
 // POST /api/cases — 创建新案例
 export async function POST(request: Request) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getUser()
   if (!user) return err('未登录', 401)
 
   const body = await request.json().catch(() => ({}))
-  const name = (body.name as string)?.trim() || defaultCaseName()
+  const name = (body.name as string)?.trim() || defaultCaseName(user.username)
 
-  // 创建案例
-  const { data: newCase, error: caseError } = await supabase
-    .from('cases')
-    .insert({ name, owner_id: user.id })
-    .select()
-    .single()
+  const id = crypto.randomUUID()
+  const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
 
-  if (caseError) return err(caseError.message, 500)
+  await db.insert(cases).values({ id, name, ownerId: user.id })
+  await db.insert(caseMembers).values({
+    id: crypto.randomUUID(),
+    caseId: id,
+    userId: user.id,
+    role: 'owner',
+  })
 
-  // 添加创建者为 owner
-  const { error: memberError } = await supabase
-    .from('case_members')
-    .insert({ case_id: newCase.id, user_id: user.id, role: 'owner' })
-
-  if (memberError) return err(memberError.message, 500)
-
-  return ok({ ...newCase, myRole: 'owner', memberCount: 1, historyCount: 0 })
+  return ok({ id, name, ownerId: user.id, createdAt: now, updatedAt: now, myRole: 'owner', historyCount: 0 })
 }

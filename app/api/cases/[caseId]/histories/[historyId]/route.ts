@@ -1,14 +1,16 @@
-import { createClient } from '@/lib/supabase/server'
+import { db } from '@/lib/db'
+import { histories, caseMembers } from '@/lib/db/schema'
+import { getUser } from '@/lib/auth/session'
+import { historyToApi } from '@/lib/db/helpers'
 import { ok, err } from '@/lib/utils'
+import { eq, and } from 'drizzle-orm'
 
-async function getMyRole(supabase: any, caseId: string, userId: string) {
-  const { data } = await supabase
-    .from('case_members')
-    .select('role')
-    .eq('case_id', caseId)
-    .eq('user_id', userId)
-    .single()
-  return data?.role as string | null
+async function getMyRole(caseId: string, userId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ role: caseMembers.role })
+    .from(caseMembers)
+    .where(and(eq(caseMembers.caseId, caseId), eq(caseMembers.userId, userId)))
+  return row?.role ?? null
 }
 
 // GET /api/cases/:caseId/histories/:historyId — 获取完整记录（含 rows）
@@ -17,24 +19,20 @@ export async function GET(
   { params }: { params: Promise<{ caseId: string; historyId: string }> }
 ) {
   const { caseId, historyId } = await params
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getUser()
   if (!user) return err('未登录', 401)
 
-  const role = await getMyRole(supabase, caseId, user.id)
+  const role = await getMyRole(caseId, user.id)
   if (!role) return err('无权访问', 403)
 
-  const { data, error } = await supabase
-    .from('histories')
-    .select('*')
-    .eq('id', historyId)
-    .eq('case_id', caseId)
-    .single()
+  const [h] = await db
+    .select()
+    .from(histories)
+    .where(and(eq(histories.id, historyId), eq(histories.caseId, caseId)))
 
-  if (error) return err(error.message, 500)
-  if (!data) return err('记录不存在', 404)
+  if (!h) return err('记录不存在', 404)
 
-  return ok(data)
+  return ok(historyToApi(h))
 }
 
 // PATCH /api/cases/:caseId/histories/:historyId — 更新配置（editor+）
@@ -43,34 +41,35 @@ export async function PATCH(
   { params }: { params: Promise<{ caseId: string; historyId: string }> }
 ) {
   const { caseId, historyId } = await params
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getUser()
   if (!user) return err('未登录', 401)
 
-  const role = await getMyRole(supabase, caseId, user.id)
+  const role = await getMyRole(caseId, user.id)
   if (!role || role === 'viewer') return err('无修改权限', 403)
 
   const body = await request.json()
 
-  // 只允许更新特定字段（防止误改核心数据）
-  const allowedFields = ['col_config', 'page_size', 'viz_configs', 'section_tag']
   const updates: Record<string, any> = {}
-  for (const key of allowedFields) {
-    if (key in body) updates[key] = body[key]
-  }
+  if ('col_config' in body) updates.colConfig = body.col_config
+  if ('page_size' in body) updates.pageSize = body.page_size
+  if ('viz_configs' in body) updates.vizConfigs = body.viz_configs
+  if ('section_tag' in body) updates.sectionTag = body.section_tag
 
   if (Object.keys(updates).length === 0) return err('没有可更新的字段')
 
-  const { data, error } = await supabase
-    .from('histories')
-    .update(updates)
-    .eq('id', historyId)
-    .eq('case_id', caseId)
-    .select()
-    .single()
+  const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
+  await db
+    .update(histories)
+    .set({ ...updates, updatedAt: now })
+    .where(and(eq(histories.id, historyId), eq(histories.caseId, caseId)))
 
-  if (error) return err(error.message, 500)
-  return ok(data)
+  const [updated] = await db
+    .select()
+    .from(histories)
+    .where(and(eq(histories.id, historyId), eq(histories.caseId, caseId)))
+
+  if (!updated) return err('记录不存在', 404)
+  return ok(historyToApi(updated))
 }
 
 // DELETE /api/cases/:caseId/histories/:historyId
@@ -79,28 +78,23 @@ export async function DELETE(
   { params }: { params: Promise<{ caseId: string; historyId: string }> }
 ) {
   const { caseId, historyId } = await params
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getUser()
   if (!user) return err('未登录', 401)
 
-  const role = await getMyRole(supabase, caseId, user.id)
+  const role = await getMyRole(caseId, user.id)
   if (!role) return err('无权访问', 403)
 
-  // 获取记录，检查是否有权删除
-  const { data: history } = await supabase
-    .from('histories')
-    .select('imported_by')
-    .eq('id', historyId)
-    .eq('case_id', caseId)
-    .single()
+  const [h] = await db
+    .select({ importedBy: histories.importedBy })
+    .from(histories)
+    .where(and(eq(histories.id, historyId), eq(histories.caseId, caseId)))
 
-  if (!history) return err('记录不存在', 404)
+  if (!h) return err('记录不存在', 404)
 
-  const canDelete = role === 'owner' || history.imported_by === user.id
+  const canDelete = role === 'owner' || h.importedBy === user.id
   if (!canDelete) return err('无删除权限', 403)
 
-  const { error } = await supabase.from('histories').delete().eq('id', historyId)
-  if (error) return err(error.message, 500)
+  await db.delete(histories).where(eq(histories.id, historyId))
 
   return ok({ id: historyId })
 }

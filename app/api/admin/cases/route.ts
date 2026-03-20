@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createAdminClient } from '@/lib/supabase/server'
+import { db } from '@/lib/db'
+import { cases, profiles, caseMembers, histories } from '@/lib/db/schema'
+import { getUser } from '@/lib/auth/session'
+import { eq, desc, like, count, sql } from 'drizzle-orm'
 
 async function requireAdmin() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-  const { data: profile } = await supabase.from('profiles').select('is_admin').eq('id', user.id).single()
-  if (!profile?.is_admin) return null
+  const user = await getUser()
+  if (!user || !user.isAdmin) return null
   return user
 }
 
@@ -18,45 +18,37 @@ export async function GET(req: NextRequest) {
   const page = parseInt(searchParams.get('page') ?? '1')
   const pageSize = 20
   const search = searchParams.get('q') ?? ''
+  const offset = (page - 1) * pageSize
 
-  const admin = await createAdminClient()
+  const [{ total }] = await db
+    .select({ total: count() })
+    .from(cases)
+    .where(search ? like(cases.name, `%${search}%`) : undefined)
 
-  let query = admin
-    .from('cases')
-    .select(`
-      id, name, owner_id, created_at, updated_at,
-      case_members(count),
-      histories(count),
-      profiles!cases_owner_id_fkey(username)
-    `, { count: 'exact' })
-    .order('updated_at', { ascending: false })
-    .range((page - 1) * pageSize, page * pageSize - 1)
+  const rows = await db
+    .select({
+      id: cases.id,
+      name: cases.name,
+      owner_id: cases.ownerId,
+      created_at: cases.createdAt,
+      updated_at: cases.updatedAt,
+      owner_username: profiles.username,
+    })
+    .from(cases)
+    .leftJoin(profiles, eq(cases.ownerId, profiles.id))
+    .where(search ? like(cases.name, `%${search}%`) : undefined)
+    .orderBy(desc(cases.updatedAt))
+    .limit(pageSize)
+    .offset(offset)
 
-  if (search) query = query.ilike('name', `%${search}%`)
+  // Get member and history counts
+  const result = await Promise.all(
+    rows.map(async (c) => {
+      const [{ memberCount }] = await db.select({ memberCount: count() }).from(caseMembers).where(eq(caseMembers.caseId, c.id))
+      const [{ historyCount }] = await db.select({ historyCount: count() }).from(histories).where(eq(histories.caseId, c.id))
+      return { ...c, member_count: memberCount, history_count: historyCount }
+    })
+  )
 
-  const { data, count, error } = await query
-  if (error) {
-    // Fallback: simple query without joins if foreign key name differs
-    const fallback = await createAdminClient()
-    const { data: simple, count: simpleCount } = await fallback
-      .from('cases')
-      .select('id, name, owner_id, created_at, updated_at', { count: 'exact' })
-      .order('updated_at', { ascending: false })
-      .range((page - 1) * pageSize, page * pageSize - 1)
-
-    return NextResponse.json({ data: simple ?? [], meta: { total: simpleCount ?? 0, page, pageSize } })
-  }
-
-  const rows = (data ?? []).map((c: any) => ({
-    id: c.id,
-    name: c.name,
-    owner_id: c.owner_id,
-    created_at: c.created_at,
-    updated_at: c.updated_at,
-    member_count: Array.isArray(c.case_members) ? c.case_members[0]?.count : undefined,
-    history_count: Array.isArray(c.histories) ? c.histories[0]?.count : undefined,
-    owner_username: c.profiles?.username,
-  }))
-
-  return NextResponse.json({ data: rows, meta: { total: count ?? 0, page, pageSize } })
+  return NextResponse.json({ data: result, meta: { total, page, pageSize } })
 }

@@ -1,8 +1,8 @@
 'use client'
 
-import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react'
 import type { Case, HistoryRecord, Profile, CaseRole, VizConfig } from '@/types'
+import ToastContainer, { type ToastItem } from '@/components/Toast'
 
 interface AppContextValue {
   // 数据
@@ -36,24 +36,32 @@ interface AppContextValue {
   // 导出/导入
   exportData: (caseId: string) => Promise<void>
   importData: (json: string) => Promise<void>
+
+  // Toast
+  showToast: (message: string, type?: ToastItem['type']) => void
 }
 
 const AppContext = createContext<AppContextValue | null>(null)
 
 export function AppProvider({ children, profile, initialCase }: { children: React.ReactNode; profile: Profile | null; initialCase?: Case }) {
-  const supabase = createClient()
-
   const [cases, setCases] = useState<Case[]>(initialCase ? [initialCase] : [])
   const [activeCaseId, setActiveCaseId] = useState<string | null>(initialCase?.id || null)
   const [histories, setHistories] = useState<HistoryRecord[]>([])
   const [currentId, setCurrentId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [toasts, setToasts] = useState<ToastItem[]>([])
+
+  const showToast = useCallback((message: string, type: ToastItem['type'] = 'success') => {
+    const id = Date.now().toString()
+    setToasts((prev) => [...prev, { id, message, type }])
+  }, [])
+
+  const removeToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id))
+  }, [])
 
   const activeCase = useMemo(() => cases.find((c) => c.id === activeCaseId) || null, [cases, activeCaseId])
   const myRole = useMemo(() => (activeCase?.myRole as CaseRole) || null, [activeCase])
-
-  // Realtime 订阅 ref
-  const realtimeChannelRef = useRef<any>(null)
 
   // 加载案例列表
   const loadCases = useCallback(async () => {
@@ -72,9 +80,7 @@ export function AppProvider({ children, profile, initialCase }: { children: Reac
       body: JSON.stringify({ name }),
     })
     const { data } = await res.json()
-    if (data) {
-      setCases((prev) => [data, ...prev])
-    }
+    if (data) setCases((prev) => [data, ...prev])
     return data
   }, [])
 
@@ -87,7 +93,8 @@ export function AppProvider({ children, profile, initialCase }: { children: Reac
       setHistories([])
       setCurrentId(null)
     }
-  }, [activeCaseId])
+    showToast('案例已删除')
+  }, [activeCaseId, showToast])
 
   // 重命名案例
   const renameCase = useCallback(async (id: string, name: string) => {
@@ -97,7 +104,8 @@ export function AppProvider({ children, profile, initialCase }: { children: Reac
       body: JSON.stringify({ name }),
     })
     setCases((prev) => prev.map((c) => c.id === id ? { ...c, name } : c))
-  }, [])
+    showToast('重命名成功')
+  }, [showToast])
 
   // 加载历史记录列表（不含 rows）
   const loadHistories = useCallback(async (caseId: string) => {
@@ -120,9 +128,9 @@ export function AppProvider({ children, profile, initialCase }: { children: Reac
     return record
   }, [])
 
-  // 本地追加（Realtime 或导入后调用）
+  // 本地追加
   const addHistory = useCallback((record: HistoryRecord) => {
-    setHistories((prev) => [record, ...prev])
+    setHistories((prev) => prev.some((h) => h.id === record.id) ? prev : [record, ...prev])
     setCurrentId(record.id)
     setCases((prev) => prev.map((c) =>
       c.id === record.caseId ? { ...c, historyCount: (c.historyCount || 0) + 1 } : c
@@ -138,16 +146,18 @@ export function AppProvider({ children, profile, initialCase }: { children: Reac
       if (currentId === id) setCurrentId(next[0]?.id || null)
       return next
     })
-  }, [activeCaseId, currentId])
+    showToast('记录已删除')
+  }, [activeCaseId, currentId, showToast])
 
   // 清空
   const clearHistories = useCallback(async (caseId: string) => {
     await fetch(`/api/cases/${caseId}/histories`, { method: 'DELETE' })
     setHistories([])
     setCurrentId(null)
-  }, [])
+    showToast('已清空所有记录')
+  }, [showToast])
 
-  // 更新历史记录配置（列配置、图表配置、分页大小）
+  // 更新历史记录配置
   const updateHistory = useCallback(async (record: HistoryRecord) => {
     if (!activeCaseId) return
     const body: Record<string, any> = {
@@ -164,10 +174,10 @@ export function AppProvider({ children, profile, initialCase }: { children: Reac
     setHistories((prev) => prev.map((h) => h.id === record.id ? record : h))
   }, [activeCaseId])
 
-  // 导出备份 — 调用服务端接口，确保包含完整 rows
+  // 导出备份
   const exportData = useCallback(async (caseId: string) => {
     const res = await fetch(`/api/export?caseId=${caseId}`)
-    if (!res.ok) { alert('导出失败'); return }
+    if (!res.ok) { showToast('导出失败', 'error'); return }
     const blob = await res.blob()
     const url = URL.createObjectURL(blob)
     const caseName = cases.find((c) => c.id === caseId)?.name ?? caseId
@@ -176,93 +186,36 @@ export function AppProvider({ children, profile, initialCase }: { children: Reac
     a.download = `backup_${caseName}_${new Date().toISOString().slice(0, 10)}.json`
     a.click()
     URL.revokeObjectURL(url)
-  }, [cases])
+  }, [cases, showToast])
 
-  // 导入备份 — 支持 v2 格式 { case, histories }；自动新建案例再批量写入
+  // 导入备份
   const importData = useCallback(async (json: string) => {
     let payload: any
-    try { payload = JSON.parse(json) } catch { alert('文件格式错误'); return }
+    try { payload = JSON.parse(json) } catch { showToast('文件格式错误', 'error'); return }
 
-    // 兼容 v2 格式（{ exportedAt, version, case, histories }）
     const historiesArr: any[] = payload.histories ?? []
     const caseName: string = payload.case?.name ?? `恢复备份_${new Date().toLocaleDateString('zh-CN')}`
 
     setLoading(true)
-    // 第一步：建新案例
     const caseRes = await fetch('/api/cases', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: caseName }),
     })
     const { data: newCase, error: caseErr } = await caseRes.json()
-    if (caseErr || !newCase) { alert('创建案例失败：' + (caseErr?.message ?? '')); setLoading(false); return }
+    if (caseErr || !newCase) { showToast('创建案例失败：' + (caseErr?.message ?? ''), 'error'); setLoading(false); return }
 
-    // 第二步：批量导入数据集
     const importRes = await fetch('/api/import', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ caseId: newCase.id, histories: historiesArr }),
     })
     const { error: importErr } = await importRes.json()
-    if (importErr) { alert('导入数据失败：' + importErr.message); setLoading(false); return }
+    if (importErr) { showToast('导入数据失败：' + importErr.message, 'error'); setLoading(false); return }
 
     await loadCases()
     setLoading(false)
-  }, [loadCases])
-
-  // Realtime 订阅
-  useEffect(() => {
-    if (!activeCaseId) {
-      if (realtimeChannelRef.current) {
-        supabase.removeChannel(realtimeChannelRef.current)
-        realtimeChannelRef.current = null
-      }
-      return
-    }
-
-    const channel = supabase
-      .channel(`case:${activeCaseId}`)
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'histories', filter: `case_id=eq.${activeCaseId}` },
-        (payload) => {
-          const record = normalizeHistory(payload.new)
-          // 避免重复（自己操作的记录已通过 addHistory 更新）
-          setHistories((prev) => {
-            if (prev.some((h) => h.id === record.id)) return prev
-            return [record, ...prev]
-          })
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'histories', filter: `case_id=eq.${activeCaseId}` },
-        (payload) => {
-          const record = normalizeHistory(payload.new)
-          setHistories((prev) => prev.map((h) => h.id === record.id ? { ...h, ...record } : h))
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'DELETE', schema: 'public', table: 'histories', filter: `case_id=eq.${activeCaseId}` },
-        (payload) => {
-          const id = payload.old.id
-          setHistories((prev) => {
-            const next = prev.filter((h) => h.id !== id)
-            if (currentId === id) setCurrentId(next[0]?.id || null)
-            return next
-          })
-        }
-      )
-      .subscribe()
-
-    realtimeChannelRef.current = channel
-
-    return () => {
-      supabase.removeChannel(channel)
-      realtimeChannelRef.current = null
-    }
-  }, [activeCaseId, currentId, supabase])
+  }, [loadCases, showToast])
 
   // 切换案例时加载历史
   useEffect(() => {
@@ -278,9 +231,10 @@ export function AppProvider({ children, profile, initialCase }: { children: Reac
       cases, histories, currentId, activeCase, profile, loading,
       loadCases, createCase, deleteCase, renameCase, setActiveCaseId, activeCaseId,
       loadHistories, loadHistoryRows, addHistory, removeHistory, clearHistories, updateHistory,
-      setCurrentId, myRole, exportData, importData,
+      setCurrentId, myRole, exportData, importData, showToast,
     }}>
       {children}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </AppContext.Provider>
   )
 }
@@ -304,7 +258,7 @@ function normalizeHistory(raw: any): HistoryRecord {
     labels: raw.labels || raw.fields || [],
     rows: raw.rows || [],
     colConfig: raw.col_config || {},
-    pageSize: raw.page_size || 20,
+    pageSize: raw.page_size || 22,
     vizConfigs: (raw.viz_configs || []) as VizConfig[],
     sortOrder: raw.sort_order || 0,
   }

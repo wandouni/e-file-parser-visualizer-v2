@@ -1,14 +1,15 @@
-import { createClient } from '@/lib/supabase/server'
+import { db } from '@/lib/db'
+import { caseMembers } from '@/lib/db/schema'
+import { getUser } from '@/lib/auth/session'
 import { ok, err } from '@/lib/utils'
+import { eq, and } from 'drizzle-orm'
 
-async function getMyRole(supabase: any, caseId: string, userId: string) {
-  const { data } = await supabase
-    .from('case_members')
-    .select('role')
-    .eq('case_id', caseId)
-    .eq('user_id', userId)
-    .single()
-  return data?.role as string | null
+async function getMyRole(caseId: string, userId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ role: caseMembers.role })
+    .from(caseMembers)
+    .where(and(eq(caseMembers.caseId, caseId), eq(caseMembers.userId, userId)))
+  return row?.role ?? null
 }
 
 // PATCH /api/cases/:caseId/members/:memberId — 修改角色（owner only）
@@ -17,40 +18,29 @@ export async function PATCH(
   { params }: { params: Promise<{ caseId: string; memberId: string }> }
 ) {
   const { caseId, memberId } = await params
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getUser()
   if (!user) return err('未登录', 401)
 
-  const myRole = await getMyRole(supabase, caseId, user.id)
+  const myRole = await getMyRole(caseId, user.id)
   if (myRole !== 'owner') return err('仅所有者可修改成员角色', 403)
 
   const body = await request.json()
   const { role } = body
 
-  if (!['editor', 'viewer'].includes(role)) {
-    return err('角色只能设置为 editor 或 viewer')
-  }
+  if (!['editor', 'viewer'].includes(role)) return err('角色只能设置为 editor 或 viewer')
 
-  // 不能修改自己（owner不能降权自己）
-  const { data: targetMember } = await supabase
-    .from('case_members')
-    .select('user_id, role')
-    .eq('id', memberId)
-    .single()
+  const [target] = await db
+    .select({ userId: caseMembers.userId, role: caseMembers.role })
+    .from(caseMembers)
+    .where(eq(caseMembers.id, memberId))
 
-  if (!targetMember) return err('成员不存在', 404)
-  if (targetMember.user_id === user.id) return err('不能修改自己的角色')
-  if (targetMember.role === 'owner') return err('不能修改所有者角色')
+  if (!target) return err('成员不存在', 404)
+  if (target.userId === user.id) return err('不能修改自己的角色')
+  if (target.role === 'owner') return err('不能修改所有者角色')
 
-  const { data, error } = await supabase
-    .from('case_members')
-    .update({ role })
-    .eq('id', memberId)
-    .select()
-    .single()
+  await db.update(caseMembers).set({ role }).where(eq(caseMembers.id, memberId))
 
-  if (error) return err(error.message, 500)
-  return ok(data)
+  return ok({ id: memberId, role })
 }
 
 // DELETE /api/cases/:caseId/members/:memberId — 移除成员（owner only）
@@ -59,24 +49,21 @@ export async function DELETE(
   { params }: { params: Promise<{ caseId: string; memberId: string }> }
 ) {
   const { caseId, memberId } = await params
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getUser()
   if (!user) return err('未登录', 401)
 
-  const myRole = await getMyRole(supabase, caseId, user.id)
+  const myRole = await getMyRole(caseId, user.id)
   if (myRole !== 'owner') return err('仅所有者可移除成员', 403)
 
-  const { data: targetMember } = await supabase
-    .from('case_members')
-    .select('user_id, role')
-    .eq('id', memberId)
-    .single()
+  const [target] = await db
+    .select({ userId: caseMembers.userId })
+    .from(caseMembers)
+    .where(eq(caseMembers.id, memberId))
 
-  if (!targetMember) return err('成员不存在', 404)
-  if (targetMember.user_id === user.id) return err('不能移除自己（所有者）')
+  if (!target) return err('成员不存在', 404)
+  if (target.userId === user.id) return err('不能移除自己（所有者）')
 
-  const { error } = await supabase.from('case_members').delete().eq('id', memberId)
-  if (error) return err(error.message, 500)
+  await db.delete(caseMembers).where(eq(caseMembers.id, memberId))
 
   return ok({ id: memberId })
 }

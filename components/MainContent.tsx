@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { BarChart2, Settings, ArrowUp, ArrowDown, ArrowUpDown, ChevronLeft, ArrowRight } from 'lucide-react'
+import { BarChart2, Settings, ArrowUp, ArrowDown, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useApp } from '@/context/AppContext'
 
 interface MainContentProps {
@@ -18,7 +18,6 @@ export default function MainContent({ onViz, onColConfig }: MainContentProps) {
 
   const currentRecord = useMemo(() => histories.find((h) => h.id === currentId), [histories, currentId])
 
-  // 切换记录时按需加载 rows
   useEffect(() => {
     setSortState(null)
     setFilterState({})
@@ -61,9 +60,9 @@ export default function MainContent({ onViz, onColConfig }: MainContentProps) {
 
   if (!currentRecord) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center" style={{ background: 'var(--bg-main)', color: 'var(--text3)' }}>
-        <BarChart2 size={48} className="mb-4 opacity-20" />
-        <p className="text-sm">暂无数据，请导入或选择历史记录</p>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#94a3b8' }}>
+        <BarChart2 size={44} style={{ opacity: 0.2, marginBottom: 12 }} />
+        <p style={{ fontSize: 13 }}>暂无数据，请导入或选择历史记录</p>
       </div>
     )
   }
@@ -76,96 +75,78 @@ export default function MainContent({ onViz, onColConfig }: MainContentProps) {
   const visibleFields = currentRecord.fields.filter((f) => currentRecord.colConfig[f])
 
   return (
-    <div className="flex-1 p-2 overflow-hidden flex flex-col min-w-0 bg-white">
-      <div className="bg-white border flex flex-col h-full overflow-hidden rounded" style={{ borderColor: 'var(--border)' }}>
+    <div style={{ flex: 1, padding: 8, overflow: 'hidden', display: 'flex', flexDirection: 'column', minWidth: 0, background: '#f1f5f9' }}>
+      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+
         {/* 工具栏 */}
-        <div className="h-10 border-b flex items-center px-3 gap-3 shrink-0" style={{ borderColor: 'var(--border)', background: '#f8fafc' }}>
-          <div className="text-xs font-medium truncate max-w-xs" style={{ color: 'var(--text)' }}>
+        <div style={{ height: 44, borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', padding: '0 14px', gap: 12, flexShrink: 0, background: '#f8fafc' }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 320 }}>
             {currentRecord.sectionTag}
-            <span className="ml-2 text-xs" style={{ color: 'var(--text3)' }}>{currentRecord.meta.Time?.substring(0, 16)}</span>
+            {currentRecord.meta.Time && (
+              <span style={{ marginLeft: 8, fontSize: 11, color: '#94a3b8', fontWeight: 400 }}>{currentRecord.meta.Time.substring(0, 16)}</span>
+            )}
           </div>
-          <div className="ml-auto flex gap-1.5">
-            <button
-              onClick={onViz}
-              className="flex items-center gap-1 px-3 py-1 text-xs font-medium border rounded transition-all hover:text-white"
-              style={{ borderColor: 'var(--border)', color: 'var(--text2)' }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--accent)'; (e.currentTarget as HTMLElement).style.color = 'white'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)' }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; (e.currentTarget as HTMLElement).style.color = 'var(--text2)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)' }}
-            >
-              <BarChart2 size={12} />可视化分析
-            </button>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+            <ToolbarBtn onClick={onViz} icon={<BarChart2 size={12} />} label="可视化分析" accent />
             {(myRole === 'owner' || myRole === 'editor') && (
-              <button
-                onClick={onColConfig}
-                className="flex items-center gap-1 px-3 py-1 text-xs font-medium border rounded transition-all hover:bg-gray-100"
-                style={{ borderColor: 'var(--border)', color: 'var(--text2)' }}
-              >
-                <Settings size={12} />显示配置
-              </button>
+              <ToolbarBtn onClick={onColConfig} icon={<Settings size={12} />} label="显示配置" />
             )}
           </div>
         </div>
 
         {/* 表格区域 */}
-        <div className="flex-1 overflow-auto">
-          <table className="w-full text-left border-collapse">
-            <thead className="text-xs sticky top-0 z-10 border-b" style={{ background: '#f1f5f9', borderColor: 'var(--border)' }}>
+        <div style={{ flex: 1, overflow: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+            <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
               <tr>
                 {visibleFields.map((field) => {
                   const label = currentRecord.labels[currentRecord.fields.indexOf(field)] || field
                   const isSorted = sortState?.field === field
                   const hasFilter = !!filterState[field]
                   return (
-                    <th key={field} className="p-0 border-r min-w-[100px]" style={{ borderColor: 'var(--border)', background: hasFilter ? 'var(--accent-light)' : undefined }}>
-                      <div className="flex flex-col">
-                        <div
-                          className="px-2 py-1.5 flex items-center justify-between cursor-pointer hover:bg-gray-200 select-none group"
-                          onClick={() => setSortState((prev) => {
-                            if (prev?.field !== field) return { field, dir: 'asc' }
-                            if (prev.dir === 'asc') return { field, dir: 'desc' }
-                            return null
-                          })}
-                        >
-                          <span className="truncate text-[10px] font-medium" style={{ color: 'var(--text2)' }}>{label}</span>
-                          <span className="ml-1">
-                            {isSorted ? (
-                              sortState!.dir === 'asc' ? <ArrowUp size={11} style={{ color: 'var(--accent)' }} /> : <ArrowDown size={11} style={{ color: 'var(--accent)' }} />
-                            ) : (
-                              <ArrowUpDown size={11} className="opacity-0 group-hover:opacity-100" style={{ color: 'var(--text3)' }} />
-                            )}
-                          </span>
-                        </div>
-                        <div className="px-1.5 pb-1.5">
-                          <input
-                            type="text"
-                            placeholder="过滤..."
-                            className="w-full text-[10px] px-1.5 py-0.5 border rounded outline-none"
-                            style={{ borderColor: 'var(--border)' }}
-                            value={filterState[field] || ''}
-                            onChange={(e) => { setFilterState((prev) => ({ ...prev, [field]: e.target.value })); setCurrentPage(1) }}
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                        </div>
+                    <th
+                      key={field}
+                      style={{ padding: 0, borderRight: '1px solid #e2e8f0', minWidth: 100, background: hasFilter ? '#eff6ff' : '#f1f5f9', borderBottom: '1px solid #e2e8f0' }}
+                    >
+                      <div
+                        onClick={() => setSortState((prev) => {
+                          if (prev?.field !== field) return { field, dir: 'asc' }
+                          if (prev.dir === 'asc') return { field, dir: 'desc' }
+                          return null
+                        })}
+                        style={{ padding: '7px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none' }}
+                      >
+                        <span style={{ fontSize: 11, fontWeight: 600, color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+                        <span style={{ marginLeft: 4, flexShrink: 0, color: '#2563eb' }}>
+                          {isSorted
+                            ? sortState!.dir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                            : <ArrowUpDown size={11} style={{ color: '#cbd5e1' }} />
+                          }
+                        </span>
+                      </div>
+                      <div style={{ padding: '0 6px 6px' }}>
+                        <input
+                          type="text"
+                          placeholder="过滤..."
+                          value={filterState[field] || ''}
+                          onChange={(e) => { setFilterState((prev) => ({ ...prev, [field]: e.target.value })); setCurrentPage(1) }}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{ width: '100%', fontSize: 10, padding: '3px 6px', border: '1px solid #e2e8f0', borderRadius: 4, outline: 'none', background: '#fff', color: '#0f172a', boxSizing: 'border-box' }}
+                        />
                       </div>
                     </th>
                   )
                 })}
               </tr>
             </thead>
-            <tbody className="divide-y text-xs" style={{ color: 'var(--text)' }}>
+            <tbody>
               {paginatedRows.length > 0 ? (
                 paginatedRows.map((row, idx) => (
-                  <tr key={idx} className="hover:bg-blue-50 transition-colors">
-                    {visibleFields.map((field) => (
-                      <td key={field} className="px-2 py-1 border-r truncate max-w-[200px]" style={{ borderColor: 'var(--border)' }} title={row[field]}>
-                        {row[field]}
-                      </td>
-                    ))}
-                  </tr>
+                  <TableRow key={idx} row={row} fields={visibleFields} />
                 ))
               ) : (
                 <tr>
-                  <td colSpan={visibleFields.length} className="px-4 py-10 text-center text-xs" style={{ color: 'var(--text3)' }}>
+                  <td colSpan={visibleFields.length} style={{ padding: '40px 16px', textAlign: 'center', fontSize: 12, color: '#94a3b8' }}>
                     无匹配数据
                   </td>
                 </tr>
@@ -176,43 +157,38 @@ export default function MainContent({ onViz, onColConfig }: MainContentProps) {
 
         {/* 过滤状态栏 */}
         {Object.values(filterState).some(Boolean) && (
-          <div className="px-3 py-1.5 flex items-center justify-between text-xs shrink-0" style={{ background: 'var(--accent)', color: 'white' }}>
-            <div className="flex items-center gap-2 overflow-hidden">
-              <span className="font-bold opacity-80">过滤中:</span>
+          <div style={{ padding: '7px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#2563eb', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden', fontSize: 11, color: '#fff' }}>
+              <span style={{ fontWeight: 700, opacity: 0.85, flexShrink: 0 }}>过滤中:</span>
               {Object.entries(filterState).filter(([, v]) => v).map(([k, v]) => (
-                <span key={k} className="bg-white/10 px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap">
+                <span key={k} style={{ background: 'rgba(255,255,255,0.15)', padding: '2px 7px', borderRadius: 4, fontSize: 10, whiteSpace: 'nowrap' }}>
                   {currentRecord.labels[currentRecord.fields.indexOf(k)] || k}: {v}
                 </span>
               ))}
-              <span className="text-blue-200 ml-1">({processedRows.length} 条)</span>
+              <span style={{ color: 'rgba(191,219,254,0.9)', marginLeft: 2 }}>({processedRows.length} 条)</span>
             </div>
-            <button onClick={() => setFilterState({})} className="bg-white text-blue-700 px-2 py-0.5 rounded font-bold text-[10px] hover:bg-blue-50 shrink-0 ml-2">
+            <button onClick={() => setFilterState({})} style={{ background: '#fff', color: '#2563eb', border: 'none', borderRadius: 4, padding: '3px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0, marginLeft: 8 }}>
               重置
             </button>
           </div>
         )}
 
         {/* 分页栏 */}
-        <div className="h-10 border-t flex items-center justify-between px-3 shrink-0" style={{ borderColor: 'var(--border)', background: '#f8fafc' }}>
-          <div className="text-[10px] font-bold" style={{ color: 'var(--text3)' }}>
-            <span style={{ color: 'var(--text)' }}>共 {currentRecord.rows.length}</span>
+        <div style={{ height: 44, borderTop: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 14px', flexShrink: 0, background: '#f8fafc' }}>
+          <div style={{ fontSize: 11, color: '#64748b' }}>
+            <span style={{ color: '#0f172a', fontWeight: 600 }}>共 {currentRecord.rows.length}</span> 条
             {processedRows.length !== currentRecord.rows.length && (
-              <span className="ml-1" style={{ color: 'var(--accent)' }}>/ 过滤后 {processedRows.length}</span>
+              <span style={{ marginLeft: 6, color: '#2563eb' }}>/ 过滤后 {processedRows.length} 条</span>
             )}
-            <span className="mx-2 opacity-30">|</span>
-            {currentPage} / {totalPages} 页
+            <span style={{ margin: '0 8px', color: '#e2e8f0' }}>|</span>
+            第 {currentPage} / {totalPages} 页
           </div>
 
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-                className="w-6 h-6 flex items-center justify-center border rounded bg-white hover:bg-gray-100 disabled:opacity-30"
-                style={{ borderColor: 'var(--border)' }}
-              >
-                <ChevronLeft size={14} />
-              </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+              <PageBtn onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1}>
+                <ChevronLeft size={13} />
+              </PageBtn>
 
               {(() => {
                 const pages: (number | '...')[] = []
@@ -230,44 +206,85 @@ export default function MainContent({ onViz, onColConfig }: MainContentProps) {
                     key={i}
                     onClick={() => typeof p === 'number' && setCurrentPage(p)}
                     disabled={typeof p !== 'number'}
-                    className={`w-6 h-6 flex items-center justify-center text-[10px] font-bold border rounded transition-all ${
-                      p === currentPage ? 'text-white' : typeof p === 'number' ? 'bg-white hover:bg-gray-100' : 'cursor-default border-transparent'
-                    }`}
                     style={{
-                      background: p === currentPage ? 'var(--accent)' : undefined,
-                      borderColor: p === currentPage ? 'var(--accent)' : 'var(--border)',
-                      color: p === currentPage ? 'white' : typeof p === 'number' ? 'var(--text2)' : 'var(--text3)',
+                      width: 26, height: 26, border: p === currentPage ? '1px solid #2563eb' : typeof p === 'number' ? '1px solid #e2e8f0' : 'none',
+                      borderRadius: 5, fontSize: 11, fontWeight: 600, cursor: typeof p === 'number' ? 'pointer' : 'default',
+                      background: p === currentPage ? '#2563eb' : '#fff',
+                      color: p === currentPage ? '#fff' : typeof p === 'number' ? '#475569' : '#94a3b8',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}
-                  >
-                    {p}
-                  </button>
+                  >{p}</button>
                 ))
               })()}
 
-              <button
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-                className="w-6 h-6 flex items-center justify-center border rounded bg-white hover:bg-gray-100 disabled:opacity-30"
-                style={{ borderColor: 'var(--border)' }}
-              >
-                <ArrowRight size={14} />
-              </button>
+              <PageBtn onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>
+                <ChevronRight size={13} />
+              </PageBtn>
             </div>
 
-            <div className="flex items-center gap-1 ml-2">
-              <span className="text-[9px] font-bold" style={{ color: 'var(--text3)' }}>每页</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 4 }}>
+              <span style={{ fontSize: 11, color: '#94a3b8' }}>每页</span>
               <select
                 value={currentRecord.pageSize}
                 onChange={(e) => { updateHistory({ ...currentRecord, pageSize: Number(e.target.value) }); setCurrentPage(1) }}
-                className="text-[10px] font-bold border rounded px-1 py-0.5 outline-none bg-white cursor-pointer"
-                style={{ borderColor: 'var(--border)', color: 'var(--text)' }}
+                style={{ fontSize: 11, fontWeight: 600, border: '1px solid #e2e8f0', borderRadius: 5, padding: '3px 6px', outline: 'none', background: '#fff', color: '#0f172a', cursor: 'pointer' }}
               >
-                {[10, 20, 35, 50, 100].map((s) => <option key={s} value={s}>{s}</option>)}
+                {[10, 22, 35, 50, 100].map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
           </div>
         </div>
       </div>
     </div>
+  )
+}
+
+function TableRow({ row, fields }: { row: Record<string, string>; fields: string[] }) {
+  const [hovered, setHovered] = useState(false)
+  return (
+    <tr
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{ background: hovered ? '#f0f7ff' : '#fff', transition: 'background 0.08s', borderBottom: '1px solid #f1f5f9' }}
+    >
+      {fields.map((field) => (
+        <td key={field} style={{ padding: '7px 8px', fontSize: 12, color: '#334155', borderRight: '1px solid #f1f5f9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }} title={row[field]}>
+          {row[field]}
+        </td>
+      ))}
+    </tr>
+  )
+}
+
+function ToolbarBtn({ onClick, icon, label, accent }: { onClick: () => void; icon: React.ReactNode; label: string; accent?: boolean }) {
+  const [hovered, setHovered] = useState(false)
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', fontSize: 12, fontWeight: 500,
+        border: `1px solid ${accent && hovered ? '#2563eb' : '#e2e8f0'}`,
+        borderRadius: 6, cursor: 'pointer',
+        background: accent && hovered ? '#2563eb' : '#fff',
+        color: accent && hovered ? '#fff' : '#475569',
+        transition: 'all 0.15s',
+      }}
+    >
+      {icon} {label}
+    </button>
+  )
+}
+
+function PageBtn({ onClick, disabled, children }: { onClick: () => void; disabled: boolean; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{ width: 26, height: 26, border: '1px solid #e2e8f0', borderRadius: 5, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.35 : 1, color: '#475569' }}
+    >
+      {children}
+    </button>
   )
 }

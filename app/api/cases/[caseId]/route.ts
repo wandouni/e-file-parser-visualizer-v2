@@ -1,14 +1,15 @@
-import { createClient } from '@/lib/supabase/server'
+import { db } from '@/lib/db'
+import { cases, caseMembers } from '@/lib/db/schema'
+import { getUser } from '@/lib/auth/session'
 import { ok, err } from '@/lib/utils'
+import { eq, and } from 'drizzle-orm'
 
-async function getMyRole(supabase: any, caseId: string, userId: string) {
-  const { data } = await supabase
-    .from('case_members')
-    .select('role')
-    .eq('case_id', caseId)
-    .eq('user_id', userId)
-    .single()
-  return data?.role as string | null
+async function getMyRole(caseId: string, userId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ role: caseMembers.role })
+    .from(caseMembers)
+    .where(and(eq(caseMembers.caseId, caseId), eq(caseMembers.userId, userId)))
+  return row?.role ?? null
 }
 
 // GET /api/cases/:caseId
@@ -17,23 +18,16 @@ export async function GET(
   { params }: { params: Promise<{ caseId: string }> }
 ) {
   const { caseId } = await params
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getUser()
   if (!user) return err('未登录', 401)
 
-  const role = await getMyRole(supabase, caseId, user.id)
+  const role = await getMyRole(caseId, user.id)
   if (!role) return err('无权访问', 403)
 
-  const { data, error } = await supabase
-    .from('cases')
-    .select('*')
-    .eq('id', caseId)
-    .single()
+  const [c] = await db.select().from(cases).where(eq(cases.id, caseId))
+  if (!c) return err('案例不存在', 404)
 
-  if (error) return err(error.message, 500)
-  if (!data) return err('案例不存在', 404)
-
-  return ok({ ...data, myRole: role })
+  return ok({ id: c.id, name: c.name, ownerId: c.ownerId, createdAt: c.createdAt, updatedAt: c.updatedAt, myRole: role })
 }
 
 // PATCH /api/cases/:caseId — 重命名（owner only）
@@ -42,26 +36,20 @@ export async function PATCH(
   { params }: { params: Promise<{ caseId: string }> }
 ) {
   const { caseId } = await params
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getUser()
   if (!user) return err('未登录', 401)
 
-  const role = await getMyRole(supabase, caseId, user.id)
+  const role = await getMyRole(caseId, user.id)
   if (role !== 'owner') return err('仅所有者可修改案例名称', 403)
 
   const body = await request.json()
   const name = (body.name as string)?.trim()
   if (!name) return err('名称不能为空')
 
-  const { data, error } = await supabase
-    .from('cases')
-    .update({ name })
-    .eq('id', caseId)
-    .select()
-    .single()
+  const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
+  await db.update(cases).set({ name, updatedAt: now }).where(eq(cases.id, caseId))
 
-  if (error) return err(error.message, 500)
-  return ok(data)
+  return ok({ id: caseId, name })
 }
 
 // DELETE /api/cases/:caseId — 删除案例（owner only）
@@ -70,15 +58,13 @@ export async function DELETE(
   { params }: { params: Promise<{ caseId: string }> }
 ) {
   const { caseId } = await params
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getUser()
   if (!user) return err('未登录', 401)
 
-  const role = await getMyRole(supabase, caseId, user.id)
+  const role = await getMyRole(caseId, user.id)
   if (role !== 'owner') return err('仅所有者可删除案例', 403)
 
-  const { error } = await supabase.from('cases').delete().eq('id', caseId)
-  if (error) return err(error.message, 500)
+  await db.delete(cases).where(eq(cases.id, caseId))
 
   return ok({ id: caseId })
 }

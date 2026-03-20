@@ -1,36 +1,27 @@
 import { NextResponse } from 'next/server'
-import { createClient, createAdminClient } from '@/lib/supabase/server'
+import { db } from '@/lib/db'
+import { profiles, cases, histories } from '@/lib/db/schema'
+import { getUser } from '@/lib/auth/session'
+import { eq, gte, count, and } from 'drizzle-orm'
 
 export async function GET() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getUser()
   if (!user) return NextResponse.json({ error: { message: 'Unauthorized' } }, { status: 401 })
+  if (!user.isAdmin) return NextResponse.json({ error: { message: 'Forbidden' } }, { status: 403 })
 
-  const { data: profile } = await supabase.from('profiles').select('is_admin').eq('id', user.id).single()
-  if (!profile?.is_admin) return NextResponse.json({ error: { message: 'Forbidden' } }, { status: 403 })
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
 
-  const admin = await createAdminClient()
-
-  const [usersRes, casesRes, historiesRes] = await Promise.all([
-    admin.from('profiles').select('id, created_at', { count: 'exact' }),
-    admin.from('cases').select('id, created_at', { count: 'exact' }),
-    admin.from('histories').select('id', { count: 'exact' }),
-  ])
-
-  // 最近 7 天新增用户
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
-  const [recentUsers, recentCases] = await Promise.all([
-    admin.from('profiles').select('id', { count: 'exact' }).gte('created_at', sevenDaysAgo),
-    admin.from('cases').select('id', { count: 'exact' }).gte('created_at', sevenDaysAgo),
-  ])
+  const [[{ totalUsers }], [{ totalCases }], [{ totalHistories }], [{ recentUsers }], [{ recentCases }], [{ bannedUsers }]] =
+    await Promise.all([
+      db.select({ totalUsers: count() }).from(profiles),
+      db.select({ totalCases: count() }).from(cases),
+      db.select({ totalHistories: count() }).from(histories),
+      db.select({ recentUsers: count() }).from(profiles).where(gte(profiles.createdAt, sevenDaysAgo)),
+      db.select({ recentCases: count() }).from(cases).where(gte(cases.createdAt, sevenDaysAgo)),
+      db.select({ bannedUsers: count() }).from(profiles).where(eq(profiles.isBanned, true)),
+    ])
 
   return NextResponse.json({
-    data: {
-      totalUsers: usersRes.count ?? 0,
-      totalCases: casesRes.count ?? 0,
-      totalHistories: historiesRes.count ?? 0,
-      recentUsers: recentUsers.count ?? 0,
-      recentCases: recentCases.count ?? 0,
-    },
+    data: { totalUsers, totalCases, totalHistories, recentUsers, recentCases, bannedUsers },
   })
 }
