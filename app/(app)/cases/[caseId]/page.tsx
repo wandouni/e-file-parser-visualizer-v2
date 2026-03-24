@@ -17,13 +17,13 @@ export default async function CaseWorkspacePage({
   const user = await getUser()
   if (!user) redirect('/login')
 
-  // 获取成员角色
+  // 获取成员角色（管理员可查看任意案例）
   const [member] = await db
     .select({ role: caseMembers.role })
     .from(caseMembers)
     .where(and(eq(caseMembers.caseId, caseId), eq(caseMembers.userId, user.id)))
 
-  if (!member) notFound()
+  if (!member && !user.isAdmin) notFound()
 
   // 获取案例基本信息
   const [caseData] = await db.select().from(cases).where(eq(cases.id, caseId))
@@ -54,7 +54,7 @@ export default async function CaseWorkspacePage({
         ownerId: caseData.ownerId,
         createdAt: caseData.createdAt,
         updatedAt: caseData.updatedAt,
-        myRole: member.role as any,
+        myRole: (member?.role ?? 'viewer') as any,
       }}
       profile={profile}
     />

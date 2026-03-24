@@ -20,36 +20,42 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const displayName = profile?.displayName || profile?.username || user.username
 
   return (
-    <div className="min-h-screen flex" style={{ background: 'var(--bg-main)' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: '#f1f5f9' }}>
       {/* 侧边栏 */}
-      <aside className="w-48 shrink-0 border-r flex flex-col" style={{ borderColor: 'var(--border)', background: 'var(--bg-sidebar)' }}>
-        <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
-          <p className="text-[10px] font-bold" style={{ color: 'var(--accent)' }}>ADMIN PANEL</p>
-          <p className="text-[9px] mt-0.5" style={{ color: 'var(--text3)' }}>{displayName}</p>
+      <aside style={{
+        width: 180, flexShrink: 0, background: '#0f172a',
+        display: 'flex', flexDirection: 'column', borderRight: '1px solid #1e293b',
+      }}>
+        <div style={{ padding: '14px 16px', borderBottom: '1px solid #1e293b' }}>
+          <p style={{ fontSize: 10, fontWeight: 700, color: '#60a5fa', letterSpacing: '0.05em' }}>ADMIN PANEL</p>
+          <p style={{ fontSize: 11, marginTop: 4, color: '#94a3b8' }}>{displayName}</p>
         </div>
-        <nav className="flex-1 p-2 space-y-0.5">
+        <nav style={{ flex: 1, padding: '8px 8px' }}>
           {[
             { href: '/admin', label: '总览' },
             { href: '/admin/users', label: '用户管理' },
             { href: '/admin/cases', label: '案例管理' },
           ].map(({ href, label }) => (
-            <Link key={href} href={href}
-              className="block px-3 py-1.5 rounded text-[11px] font-medium hover:bg-white/10 transition-colors"
-              style={{ color: 'var(--text2)' }}>
+            <Link key={href} href={href} style={{
+              display: 'block', padding: '7px 12px', borderRadius: 6,
+              fontSize: 12, color: '#cbd5e1', textDecoration: 'none',
+              marginBottom: 2,
+            }}>
               {label}
             </Link>
           ))}
         </nav>
-        <div className="p-2 border-t" style={{ borderColor: 'var(--border)' }}>
-          <Link href="/cases"
-            className="block px-3 py-1.5 rounded text-[10px] hover:bg-white/10 transition-colors text-center"
-            style={{ color: 'var(--text3)' }}>
-            返回应用
+        <div style={{ padding: '8px', borderTop: '1px solid #1e293b' }}>
+          <Link href="/cases" style={{
+            display: 'block', padding: '6px 12px', borderRadius: 6,
+            fontSize: 11, color: '#64748b', textDecoration: 'none', textAlign: 'center',
+          }}>
+            ← 返回应用
           </Link>
         </div>
       </aside>
 
-      <main className="flex-1 overflow-auto p-6">{children}</main>
+      <main style={{ flex: 1, overflow: 'auto', padding: 28 }}>{children}</main>
     </div>
   )
 }

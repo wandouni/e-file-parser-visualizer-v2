@@ -23,7 +23,7 @@ export async function GET(
   if (!user) return err('未登录', 401)
 
   const role = await getMyRole(caseId, user.id)
-  if (!role) return err('无权访问', 403)
+  if (!role && !user.isAdmin) return err('无权访问', 403)
 
   const rows = await db
     .select({

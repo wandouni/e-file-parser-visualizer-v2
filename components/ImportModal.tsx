@@ -347,7 +347,7 @@ export default function ImportModal({ onClose }: Props) {
           <>
             <textarea
               style={{ width: '100%', height: 240, padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontFamily: 'monospace', fontSize: 11, outline: 'none', resize: 'none', background: '#f8fafc', color: '#0f172a', boxSizing: 'border-box', lineHeight: 1.6 }}
-              placeholder={`<! Grid=广东 Time='2025-03-06 17:15:10' Type=日前 !>\n<SystemBalance>\n@ ResultID PeriodID Value\n// 结果ID 时段 数值\nN0000 1 15255.26\n</SystemBalance>`}
+              placeholder={`<! Region=XX Time='2024-01-01 00:00:00' Type=Sample !>\n<DataSection>\n@ ID PeriodID Value\n/@ 编号 时段 数值\n001 1 100.00\n002 2 200.00\n</DataSection>`}
               value={textInput}
               onChange={(e) => setTextInput(e.target.value)}
             />

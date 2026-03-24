@@ -3,7 +3,6 @@
 export const dynamic = 'force-dynamic'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Search, Trash2, ExternalLink } from 'lucide-react'
 import Link from 'next/link'
 
 interface CaseRow {
@@ -15,6 +14,14 @@ interface CaseRow {
   member_count?: number
   history_count?: number
   owner_username?: string
+}
+
+const th: React.CSSProperties = {
+  padding: '9px 16px', fontSize: 11, fontWeight: 600, color: '#64748b',
+  textAlign: 'left', background: '#f8fafc', borderBottom: '1px solid #e2e8f0',
+}
+const td: React.CSSProperties = {
+  padding: '10px 16px', fontSize: 12, color: '#0f172a', borderBottom: '1px solid #f1f5f9',
 }
 
 export default function AdminCasesPage() {
@@ -40,13 +47,17 @@ export default function AdminCasesPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-sm font-bold" style={{ color: 'var(--text)' }}>案例管理 ({total})</h1>
-        <div className="relative">
-          <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text3)' }} />
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <h1 style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>案例管理 ({total})</h1>
+        <div style={{ position: 'relative' }}>
+          <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: 12 }}>🔍</span>
           <input
-            className="pl-7 pr-3 py-1.5 text-xs border rounded-lg outline-none w-48"
-            style={{ borderColor: 'var(--border)', color: 'var(--text)' }}
+            style={{
+              paddingLeft: 30, paddingRight: 12, paddingTop: 7, paddingBottom: 7,
+              fontSize: 12, border: '1px solid #e2e8f0', borderRadius: 8, outline: 'none',
+              width: 192, color: '#0f172a', background: '#fff',
+            }}
             placeholder="搜索案例名..."
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1) }}
@@ -54,40 +65,47 @@ export default function AdminCasesPage() {
         </div>
       </div>
 
-      <div className="bg-white border rounded-xl overflow-hidden" style={{ borderColor: 'var(--border)' }}>
-        <table className="w-full text-left">
-          <thead className="border-b text-[10px] font-medium" style={{ background: '#f8fafc', borderColor: 'var(--border)', color: 'var(--text2)' }}>
+      {/* Table */}
+      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
             <tr>
-              <th className="px-4 py-2.5">案例名称</th>
-              <th className="px-4 py-2.5">创建者</th>
-              <th className="px-4 py-2.5 text-center">成员</th>
-              <th className="px-4 py-2.5 text-center">数据集</th>
-              <th className="px-4 py-2.5">更新时间</th>
-              <th className="px-4 py-2.5 text-center">操作</th>
+              <th style={th}>案例名称</th>
+              <th style={th}>创建者</th>
+              <th style={{ ...th, textAlign: 'center' }}>数据集数</th>
+              <th style={th}>更新时间</th>
+              <th style={{ ...th, textAlign: 'center' }}>操作</th>
             </tr>
           </thead>
-          <tbody className="divide-y text-xs" style={{ color: 'var(--text)' }}>
+          <tbody>
             {loading ? (
-              <tr><td colSpan={6} className="py-8 text-center text-[10px]" style={{ color: 'var(--text3)' }}>加载中...</td></tr>
+              <tr>
+                <td colSpan={5} style={{ ...td, textAlign: 'center', color: '#94a3b8', padding: '32px 0' }}>
+                  加载中...
+                </td>
+              </tr>
             ) : cases.map((c) => (
-              <tr key={c.id} className="hover:bg-gray-50">
-                <td className="px-4 py-2.5 font-medium">{c.name}</td>
-                <td className="px-4 py-2.5 text-[10px]" style={{ color: 'var(--text2)' }}>
+              <tr key={c.id} style={{ background: '#fff' }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = '#fff')}>
+                <td style={{ ...td, fontWeight: 600 }}>{c.name}</td>
+                <td style={{ ...td, color: '#475569', fontSize: 11 }}>
                   {c.owner_username ?? c.owner_id.slice(0, 8)}
                 </td>
-                <td className="px-4 py-2.5 text-center text-[10px]">{c.member_count ?? '—'}</td>
-                <td className="px-4 py-2.5 text-center text-[10px]">{c.history_count ?? '—'}</td>
-                <td className="px-4 py-2.5 text-[10px]" style={{ color: 'var(--text2)' }}>
+                <td style={{ ...td, textAlign: 'center', color: '#475569' }}>
+                  {c.history_count ?? '—'}
+                </td>
+                <td style={{ ...td, color: '#475569', fontSize: 11 }}>
                   {new Date(c.updated_at).toLocaleDateString('zh-CN')}
                 </td>
-                <td className="px-4 py-2.5">
-                  <div className="flex items-center justify-center gap-2">
-                    <Link href={`/cases/${c.id}`} target="_blank"
-                      className="p-1 rounded hover:bg-blue-50 transition-colors"
-                      style={{ color: 'var(--text3)' }}>
-                      <ExternalLink size={13} />
-                    </Link>
-                  </div>
+                <td style={{ ...td, textAlign: 'center' }}>
+                  <Link href={`/cases/${c.id}`} target="_blank" style={{
+                    display: 'inline-block', padding: '4px 10px', border: '1px solid #e2e8f0',
+                    borderRadius: 6, fontSize: 11, color: '#475569', textDecoration: 'none',
+                    background: '#fff',
+                  }}>
+                    打开 ↗
+                  </Link>
                 </td>
               </tr>
             ))}
@@ -95,15 +113,22 @@ export default function AdminCasesPage() {
         </table>
       </div>
 
+      {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 mt-4">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 16 }}>
           <button disabled={page === 1} onClick={() => setPage((p) => p - 1)}
-            className="px-3 py-1 text-xs border rounded disabled:opacity-40"
-            style={{ borderColor: 'var(--border)', color: 'var(--text2)' }}>上一页</button>
-          <span className="text-[10px]" style={{ color: 'var(--text3)' }}>{page} / {totalPages}</span>
+            style={{
+              padding: '5px 14px', fontSize: 12, border: '1px solid #e2e8f0', borderRadius: 6,
+              cursor: page === 1 ? 'not-allowed' : 'pointer', background: '#fff',
+              color: '#475569', opacity: page === 1 ? 0.4 : 1,
+            }}>上一页</button>
+          <span style={{ fontSize: 11, color: '#94a3b8' }}>{page} / {totalPages}</span>
           <button disabled={page === totalPages} onClick={() => setPage((p) => p + 1)}
-            className="px-3 py-1 text-xs border rounded disabled:opacity-40"
-            style={{ borderColor: 'var(--border)', color: 'var(--text2)' }}>下一页</button>
+            style={{
+              padding: '5px 14px', fontSize: 12, border: '1px solid #e2e8f0', borderRadius: 6,
+              cursor: page === totalPages ? 'not-allowed' : 'pointer', background: '#fff',
+              color: '#475569', opacity: page === totalPages ? 0.4 : 1,
+            }}>下一页</button>
         </div>
       )}
     </div>

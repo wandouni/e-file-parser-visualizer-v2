@@ -22,12 +22,12 @@ export async function GET(
   if (!user) return err('未登录', 401)
 
   const role = await getMyRole(caseId, user.id)
-  if (!role) return err('无权访问', 403)
+  if (!role && !user.isAdmin) return err('无权访问', 403)
 
   const [c] = await db.select().from(cases).where(eq(cases.id, caseId))
   if (!c) return err('案例不存在', 404)
 
-  return ok({ id: c.id, name: c.name, ownerId: c.ownerId, createdAt: c.createdAt, updatedAt: c.updatedAt, myRole: role })
+  return ok({ id: c.id, name: c.name, ownerId: c.ownerId, createdAt: c.createdAt, updatedAt: c.updatedAt, myRole: role ?? 'viewer' })
 }
 
 // PATCH /api/cases/:caseId — 重命名（owner only）
