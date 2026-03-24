@@ -63,5 +63,10 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  matcher: [
+    // Exclude static assets AND the import-text endpoint.
+    // import-text handles auth itself via getUser() and receives large file bodies
+    // that exceed Next.js middleware's default 10 MB forwarding limit.
+    '/((?!_next/static|_next/image|favicon\\.ico|api/cases/[^/]+/histories/import-text).*)',
+  ],
 }

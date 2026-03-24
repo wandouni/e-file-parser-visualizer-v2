@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Plus, X, ArrowRight } from 'lucide-react'
 import { Modal } from './Modal'
 import { useApp } from '@/context/AppContext'
 import type { HistoryRecord, JoinFilter, Row } from '@/types'
+import { FilterValuePicker } from './FilterValuePicker'
 
 interface Props { onClose: () => void }
 
@@ -14,8 +15,23 @@ const S = {
   input: { border: '1px solid #e2e8f0', borderRadius: 6, padding: '5px 8px', fontSize: 11, outline: 'none', background: '#fff', color: '#0f172a', boxSizing: 'border-box' } as React.CSSProperties,
 }
 
+function buildDistinct(record: HistoryRecord | undefined): Record<string, string[]> {
+  if (!record || record.rows.length === 0) return {}
+  const result: Record<string, string[]> = {}
+  for (const field of record.fields) {
+    const seen = new Set<string>()
+    for (const row of record.rows) seen.add(String(row[field] ?? ''))
+    result[field] = [...seen].sort((a, b) => {
+      const na = parseFloat(a), nb = parseFloat(b)
+      if (!isNaN(na) && !isNaN(nb)) return na - nb
+      return a.localeCompare(b, 'zh')
+    })
+  }
+  return result
+}
+
 export default function JoinModal({ onClose }: Props) {
-  const { histories, addHistory, activeCaseId } = useApp()
+  const { histories, addHistory, activeCaseId, loadHistoryRows } = useApp()
 
   const [leftId, setLeftId] = useState('')
   const [rightId, setRightId] = useState('')
@@ -31,6 +47,25 @@ export default function JoinModal({ onClose }: Props) {
 
   const leftRecord = histories.find((h) => h.id === leftId)
   const rightRecord = histories.find((h) => h.id === rightId)
+
+  // Load rows for filter value picking when a record is selected
+  useEffect(() => {
+    if (leftId && activeCaseId) {
+      const rec = histories.find((h) => h.id === leftId)
+      if (rec && rec.rows.length === 0) loadHistoryRows(activeCaseId, leftId)
+    }
+  }, [leftId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (rightId && activeCaseId) {
+      const rec = histories.find((h) => h.id === rightId)
+      if (rec && rec.rows.length === 0) loadHistoryRows(activeCaseId, rightId)
+    }
+  }, [rightId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Distinct sorted values per field for each side
+  const leftDistinct = useMemo(() => buildDistinct(leftRecord), [leftId, leftRecord?.rows.length]) // eslint-disable-line react-hooks/exhaustive-deps
+  const rightDistinct = useMemo(() => buildDistinct(rightRecord), [rightId, rightRecord?.rows.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (leftRecord && rightRecord && leftKey && rightKey) {
@@ -79,7 +114,7 @@ export default function JoinModal({ onClose }: Props) {
       importedBy: data.imported_by, sectionTag: data.section_tag,
       meta: data.meta, fields: data.fields, labels: data.labels,
       rows: data.rows, colConfig: data.col_config, pageSize: data.page_size,
-      vizConfigs: data.viz_configs, sortOrder: data.sort_order,
+      vizConfigs: data.viz_configs, multiSubjectConfig: data.multi_subject_config ?? null, sortOrder: data.sort_order,
     })
     setLoading(false)
     onClose()
@@ -92,6 +127,7 @@ export default function JoinModal({ onClose }: Props) {
     const key = side === 'left' ? leftKey : rightKey
     const setKey = side === 'left' ? setLeftKey : setRightKey
     const sideFilters = filters[side]
+    const sideDistinct = side === 'left' ? leftDistinct : rightDistinct
 
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12, padding: 14, border: '1px solid #e2e8f0', borderRadius: 10, background: '#f8fafc', overflow: 'hidden' }}>
@@ -161,7 +197,7 @@ export default function JoinModal({ onClose }: Props) {
                 {sideFilters.map((filter, idx) => (
                   <div key={idx} style={{ display: 'flex', gap: 4, alignItems: 'center', background: '#fff', padding: 6, border: '1px solid #e2e8f0', borderRadius: 6 }}>
                     <select style={{ ...S.input, width: 90, padding: '4px 6px' }}
-                      value={filter.field} onChange={(e) => updateFilter(side, idx, { field: e.target.value })}>
+                      value={filter.field} onChange={(e) => updateFilter(side, idx, { field: e.target.value, value: '' })}>
                       <option value="">字段...</option>
                       {record.fields.map((f, i) => <option key={f} value={f}>{record.labels[i] || f}</option>)}
                     </select>
@@ -175,8 +211,12 @@ export default function JoinModal({ onClose }: Props) {
                       <option value="lte">≤</option>
                       <option value="contains">包含</option>
                     </select>
-                    <input style={{ ...S.input, flex: 1, minWidth: 0, padding: '4px 6px' }}
-                      value={filter.value} onChange={(e) => updateFilter(side, idx, { value: e.target.value })} />
+                    <FilterValuePicker
+                      value={filter.value}
+                      onChange={(v) => updateFilter(side, idx, { value: v })}
+                      distinctValues={filter.field ? (sideDistinct[filter.field] ?? []) : []}
+                      style={{ flex: 1, minWidth: 0 }}
+                    />
                     <button onClick={() => setFilters((p) => ({ ...p, [side]: p[side].filter((_, i) => i !== idx) }))}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
                       <X size={12} />

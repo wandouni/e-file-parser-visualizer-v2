@@ -1,6 +1,6 @@
 import type { Meta, Row, ParseResult } from '@/types'
 
-export function parseText(raw: string, fileName: string = ''): ParseResult {
+export function parseText(raw: string, fileName: string = '', maxRows = 500_000): ParseResult {
   const meta: Meta = {}
 
   // 1. Meta Info
@@ -62,7 +62,10 @@ export function parseText(raw: string, fileName: string = ''): ParseResult {
   }
 
   // 5. Data Rows
+  // maxRows prevents OOM for very large files (e.g. 1M-row E-files).
+  // Rows beyond the limit are counted but not instantiated as objects.
   const rows: Row[] = []
+  let totalRows = 0
   const lines = raw.split(/\r?\n/)
 
   for (const line of lines) {
@@ -86,12 +89,18 @@ export function parseText(raw: string, fileName: string = ''): ParseResult {
 
     if (cols.length < fields.length * 0.5) continue
 
+    totalRows++
+
+    if (rows.length >= maxRows) continue  // count only, skip object creation
+
     const row: Row = {}
     fields.forEach((f, i) => {
       row[f] = cols[i] ?? ''
     })
     rows.push(row)
   }
+
+  const truncated = totalRows > maxRows
 
   // rows 为空时仍允许导入（文件格式合法但该数据集在本次计算中无记录）
   return {
@@ -102,6 +111,8 @@ export function parseText(raw: string, fileName: string = ''): ParseResult {
       fields,
       labels,
       rows,
+      truncated,
+      totalRows,
     },
   }
 }

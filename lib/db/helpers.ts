@@ -17,6 +17,7 @@ export function historyToApi(h: HistoryRow, includeRows = true) {
     col_config: h.colConfig,
     page_size: h.pageSize,
     viz_configs: h.vizConfigs,
+    multi_subject_config: h.multiSubjectConfig ?? null,
     sort_order: h.sortOrder,
     created_at: h.createdAt,
     updated_at: h.updatedAt,

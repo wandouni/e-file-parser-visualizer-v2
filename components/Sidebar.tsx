@@ -62,19 +62,28 @@ function countItems(node: FolderNode): number {
   return node.items.length + node.children.reduce((s, c) => s + countItems(c), 0)
 }
 
+function collectIds(node: FolderNode): string[] {
+  return [
+    ...node.items.map((h) => h.id),
+    ...node.children.flatMap((c) => collectIds(c)),
+  ]
+}
+
 export default function Sidebar({ onImport, onJoin }: SidebarProps) {
   const router = useRouter()
   const {
-    histories, currentId, setCurrentId, removeHistory, clearHistories,
+    histories, currentId, setCurrentId, removeHistory, removeHistories, clearHistories,
     activeCase, renameCase, myRole,
   } = useApp()
 
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [deleteFolderPath, setDeleteFolderPath] = useState<string | null>(null)
   const [isEditingName, setIsEditingName] = useState(false)
   const [editName, setEditName] = useState('')
   const [fileSearchTerm, setFileSearchTerm] = useState('')
   const [hoveredItem, setHoveredItem] = useState<string | null>(null)
+  const [hoveredFolder, setHoveredFolder] = useState<string | null>(null)
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set())
 
   useEffect(() => {
@@ -118,8 +127,11 @@ export default function Sidebar({ onImport, onJoin }: SidebarProps) {
           transition: 'background 0.1s',
         }}
       >
-        <div style={{ fontSize: 11, fontWeight: 700, color: isActive ? '#60a5fa' : '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 16 }}>
-          {h.sectionTag || '未命名'}
+        <div style={{ fontSize: 11, fontWeight: 700, color: isActive ? '#60a5fa' : '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 16, display: 'flex', alignItems: 'center', gap: 5 }}>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.sectionTag || '未命名'}</span>
+          {(h.vizConfigs.length > 0 || h.multiSubjectConfig?.keyField) && (
+            <span style={{ flexShrink: 0, width: 6, height: 6, borderRadius: '50%', background: '#ef4444', display: 'inline-block' }} />
+          )}
         </div>
         <div style={{ fontSize: 10, color: '#475569', marginTop: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>{h.meta.Time ? h.meta.Time.substring(0, 16) : '无时间'}</span>
@@ -140,11 +152,15 @@ export default function Sidebar({ onImport, onJoin }: SidebarProps) {
   function renderFolderNode(node: FolderNode, depth: number): React.ReactNode {
     const isCollapsed = collapsedFolders.has(node.path)
     const total = countItems(node)
+    const isHovered = hoveredFolder === node.path
+    const canEdit = myRole === 'owner' || myRole === 'editor'
     return (
       <div key={node.path}>
         <div
           onClick={() => toggleFolder(node.path)}
-          style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 8px', paddingLeft: 8 + depth * 12, cursor: 'pointer', borderRadius: 5, marginBottom: 1, userSelect: 'none' }}
+          onMouseEnter={() => setHoveredFolder(node.path)}
+          onMouseLeave={() => setHoveredFolder(null)}
+          style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 8px', paddingLeft: 8 + depth * 12, cursor: 'pointer', borderRadius: 5, marginBottom: 1, userSelect: 'none', background: isHovered ? 'rgba(255,255,255,0.04)' : 'transparent', transition: 'background 0.1s' }}
         >
           <ChevronRight
             size={11}
@@ -152,7 +168,15 @@ export default function Sidebar({ onImport, onJoin }: SidebarProps) {
           />
           <Folder size={12} style={{ color: '#f59e0b', flexShrink: 0 }} />
           <span style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{node.name}</span>
-          <span style={{ fontSize: 10, color: '#475569', flexShrink: 0 }}>{total}</span>
+          <span style={{ fontSize: 10, color: '#475569', flexShrink: 0, marginRight: canEdit ? 2 : 0 }}>{total}</span>
+          {canEdit && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setDeleteFolderPath(node.path) }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#475569', display: 'flex', alignItems: 'center', padding: 2, borderRadius: 3, opacity: isHovered ? 1 : 0, transition: 'opacity 0.15s', flexShrink: 0 }}
+            >
+              <X size={11} />
+            </button>
+          )}
         </div>
         {!isCollapsed && (
           <div>
@@ -182,6 +206,31 @@ export default function Sidebar({ onImport, onJoin }: SidebarProps) {
         confirmText="删除"
         cancelText="取消"
       />
+
+      {/* 删除文件夹确认弹窗 */}
+      {(() => {
+        const flattenNodes = (nodes: FolderNode[]): FolderNode[] =>
+          nodes.flatMap((n) => [n, ...flattenNodes(n.children)])
+        const folderNode = deleteFolderPath
+          ? flattenNodes(roots).find((n) => n.path === deleteFolderPath) ?? null
+          : null
+        const folderCount = folderNode ? countItems(folderNode) : 0
+        const folderName = folderNode ? folderNode.name : ''
+        return (
+          <ConfirmModal
+            isOpen={!!deleteFolderPath}
+            onClose={() => setDeleteFolderPath(null)}
+            onConfirm={() => {
+              if (folderNode) removeHistories(collectIds(folderNode))
+              setDeleteFolderPath(null)
+            }}
+            title="删除文件夹"
+            message={`确认删除文件夹「${folderName}」及其下 ${folderCount} 条记录？此操作不可撤销。`}
+            confirmText="删除"
+            cancelText="取消"
+          />
+        )
+      })()}
 
       <ConfirmModal
         isOpen={clearConfirmOpen}

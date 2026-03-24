@@ -6,6 +6,17 @@ export type Row = { [key: string]: string }
 
 // ─── 可视化图表 ─────────────────────────────────────────────────
 
+export interface MultiSubjectConfig {
+  keyField: string              // 主体列（用于分组）
+  xField: string                // X 轴列
+  yFields: string[]             // 选中的 Y 轴列（多选）
+  chartType: 'bar' | 'line' | 'area' | 'scatter'
+  xAxisType: 'category' | 'linear'
+  totalRule: 'sum' | 'mean' | 'weighted_mean'
+  totalWeightField: string      // 加权平均时的权重列
+  checkedSubjects: string[]     // '__total__' = 总加行，其余为主体值
+}
+
 export interface VizFilter {
   field: string
   op: 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'contains'
@@ -38,6 +49,7 @@ export interface HistoryRecord {
   colConfig: Record<string, boolean>
   pageSize: number
   vizConfigs: VizConfig[]
+  multiSubjectConfig: MultiSubjectConfig | null
   sortOrder: number
 }
 
@@ -141,5 +153,7 @@ export interface ParseResult {
     fields: string[]
     labels: string[]
     rows: Row[]
+    truncated?: boolean  // true if rows were cut at maxRows limit
+    totalRows?: number   // total data rows in file (before truncation)
   }
 }

@@ -1,6 +1,6 @@
 import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core'
 import { sql } from 'drizzle-orm'
-import type { Row, VizConfig } from '@/types'
+import type { Row, VizConfig, MultiSubjectConfig } from '@/types'
 
 export const profiles = sqliteTable('profiles', {
   id: text('id').primaryKey(),
@@ -42,6 +42,7 @@ export const histories = sqliteTable('histories', {
   colConfig: text('col_config', { mode: 'json' }).$type<Record<string, boolean>>().notNull().default({}),
   pageSize: integer('page_size').notNull().default(22),
   vizConfigs: text('viz_configs', { mode: 'json' }).$type<VizConfig[]>().notNull().default([]),
+  multiSubjectConfig: text('multi_subject_config', { mode: 'json' }).$type<MultiSubjectConfig | null>(),
   sortOrder: integer('sort_order').notNull().default(0),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),

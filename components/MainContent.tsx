@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
-import { BarChart2, Settings, ArrowUp, ArrowDown, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { createPortal } from 'react-dom'
+import { BarChart2, Settings, ArrowUp, ArrowDown, ArrowUpDown, ChevronLeft, ChevronRight, ListFilter, X } from 'lucide-react'
 import { useApp } from '@/context/AppContext'
 
 interface MainContentProps {
@@ -9,19 +10,31 @@ interface MainContentProps {
   onColConfig: () => void
 }
 
+const FILTER_PAGE_SIZE = 10  // values per page inside the filter dropdown
+
 export default function MainContent({ onViz, onColConfig }: MainContentProps) {
   const { histories, currentId, updateHistory, loadHistoryRows, activeCaseId, myRole } = useApp()
 
   const [sortState, setSortState] = useState<{ field: string; dir: 'asc' | 'desc' } | null>(null)
-  const [filterState, setFilterState] = useState<Record<string, string>>({})
+  // Record<field, Set<value>> — empty Set means "show all"
+  const [filterState, setFilterState] = useState<Record<string, Set<string>>>({})
   const [currentPage, setCurrentPage] = useState(1)
 
-  const currentRecord = useMemo(() => histories.find((h) => h.id === currentId), [histories, currentId])
+  // Filter dropdown state
+  const [openFilter, setOpenFilter] = useState<string | null>(null)
+  const [filterSearch, setFilterSearch] = useState('')
+  const [filterPage, setFilterPage] = useState(1)
+  const [filterAnchor, setFilterAnchor] = useState<{ top: number; left: number; width: number } | null>(null)
+  const [mounted, setMounted] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => { setMounted(true) }, [])
 
   useEffect(() => {
     setSortState(null)
     setFilterState({})
     setCurrentPage(1)
+    setOpenFilter(null)
     if (currentId && activeCaseId) {
       const record = histories.find((h) => h.id === currentId)
       if (record && record.rows.length === 0) {
@@ -30,26 +43,55 @@ export default function MainContent({ onViz, onColConfig }: MainContentProps) {
     }
   }, [currentId])
 
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!openFilter) return
+    function onDown(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setOpenFilter(null)
+      }
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [openFilter])
+
+  const currentRecord = useMemo(
+    () => histories.find((h) => h.id === currentId),
+    [histories, currentId]
+  )
+
+  // Distinct sorted values per visible field
+  const distinctValues = useMemo(() => {
+    if (!currentRecord) return {} as Record<string, string[]>
+    const result: Record<string, string[]> = {}
+    for (const field of currentRecord.fields) {
+      const seen = new Set<string>()
+      for (const row of currentRecord.rows) seen.add(String(row[field] ?? ''))
+      result[field] = [...seen].sort((a, b) => {
+        const na = parseFloat(a), nb = parseFloat(b)
+        if (!isNaN(na) && !isNaN(nb)) return na - nb
+        return a.localeCompare(b, 'zh')
+      })
+    }
+    return result
+  }, [currentRecord])
+
   const processedRows = useMemo(() => {
     if (!currentRecord) return []
     let rows = [...currentRecord.rows]
 
-    const activeFilters = Object.entries(filterState).filter(([, val]) => val)
+    const activeFilters = Object.entries(filterState).filter(([, set]) => set.size > 0)
     if (activeFilters.length > 0) {
       rows = rows.filter((row) =>
-        activeFilters.every(([field, val]) =>
-          String(row[field] || '').toLowerCase().includes(val.toLowerCase())
-        )
+        activeFilters.every(([field, set]) => set.has(String(row[field] ?? '')))
       )
     }
 
     if (sortState) {
       const { field, dir } = sortState
       rows.sort((a, b) => {
-        const va = a[field] || ''
-        const vb = b[field] || ''
-        const na = parseFloat(va)
-        const nb = parseFloat(vb)
+        const va = a[field] || '', vb = b[field] || ''
+        const na = parseFloat(va), nb = parseFloat(vb)
         if (!isNaN(na) && !isNaN(nb)) return dir === 'asc' ? na - nb : nb - na
         return dir === 'asc' ? va.localeCompare(vb, 'zh') : vb.localeCompare(va, 'zh')
       })
@@ -73,6 +115,42 @@ export default function MainContent({ onViz, onColConfig }: MainContentProps) {
     currentPage * currentRecord.pageSize
   )
   const visibleFields = currentRecord.fields.filter((f) => currentRecord.colConfig[f])
+  const hasAnyFilter = Object.values(filterState).some((s) => s.size > 0)
+
+  function openFilterFor(field: string, el: HTMLElement) {
+    if (openFilter === field) { setOpenFilter(null); return }
+    const rect = el.getBoundingClientRect()
+    const dropW = Math.max(rect.width, 220)
+    const left = Math.min(rect.left, window.innerWidth - dropW - 8)
+    setFilterAnchor({ top: rect.bottom + 2, left, width: dropW })
+    setOpenFilter(field)
+    setFilterSearch('')
+    setFilterPage(1)
+  }
+
+  function toggleValue(field: string, val: string) {
+    setFilterState((prev) => {
+      const s = new Set(prev[field] || [])
+      if (s.has(val)) s.delete(val); else s.add(val)
+      return { ...prev, [field]: s }
+    })
+    setCurrentPage(1)
+  }
+
+  function clearFilter(field: string) {
+    setFilterState((prev) => { const n = { ...prev }; delete n[field]; return n })
+    setCurrentPage(1)
+  }
+
+  // --- Dropdown content ---
+  const dropdownField = openFilter
+  const allVals = dropdownField ? (distinctValues[dropdownField] || []) : []
+  const searched = filterSearch
+    ? allVals.filter((v) => v.toLowerCase().includes(filterSearch.toLowerCase()))
+    : allVals
+  const totalValPages = Math.max(1, Math.ceil(searched.length / FILTER_PAGE_SIZE))
+  const pageVals = searched.slice((filterPage - 1) * FILTER_PAGE_SIZE, filterPage * FILTER_PAGE_SIZE)
+  const selectedSet: Set<string> = (dropdownField ? filterState[dropdownField] : null) || new Set()
 
   return (
     <div style={{ flex: 1, padding: 8, overflow: 'hidden', display: 'flex', flexDirection: 'column', minWidth: 0, background: '#f1f5f9' }}>
@@ -87,7 +165,8 @@ export default function MainContent({ onViz, onColConfig }: MainContentProps) {
             )}
           </div>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-            <ToolbarBtn onClick={onViz} icon={<BarChart2 size={12} />} label="可视化分析" accent />
+            <ToolbarBtn onClick={onViz} icon={<BarChart2 size={12} />} label="可视化分析" accent
+              dot={!!(currentRecord.vizConfigs.length > 0 || currentRecord.multiSubjectConfig?.keyField)} />
             {(myRole === 'owner' || myRole === 'editor') && (
               <ToolbarBtn onClick={onColConfig} icon={<Settings size={12} />} label="显示配置" />
             )}
@@ -102,37 +181,49 @@ export default function MainContent({ onViz, onColConfig }: MainContentProps) {
                 {visibleFields.map((field) => {
                   const label = currentRecord.labels[currentRecord.fields.indexOf(field)] || field
                   const isSorted = sortState?.field === field
-                  const hasFilter = !!filterState[field]
+                  const selectedCount = filterState[field]?.size ?? 0
+                  const isFiltered = selectedCount > 0
+                  const isOpen = openFilter === field
+
                   return (
                     <th
                       key={field}
-                      style={{ padding: 0, borderRight: '1px solid #e2e8f0', minWidth: 100, background: hasFilter ? '#eff6ff' : '#f1f5f9', borderBottom: '1px solid #e2e8f0' }}
+                      style={{ padding: 0, borderRight: '1px solid #e2e8f0', minWidth: 100, background: isFiltered ? '#eff6ff' : '#f1f5f9', borderBottom: '1px solid #e2e8f0' }}
                     >
-                      <div
-                        onClick={() => setSortState((prev) => {
-                          if (prev?.field !== field) return { field, dir: 'asc' }
-                          if (prev.dir === 'asc') return { field, dir: 'desc' }
-                          return null
-                        })}
-                        style={{ padding: '7px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none' }}
-                      >
-                        <span style={{ fontSize: 11, fontWeight: 600, color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
-                        <span style={{ marginLeft: 4, flexShrink: 0, color: '#2563eb' }}>
-                          {isSorted
-                            ? sortState!.dir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />
-                            : <ArrowUpDown size={11} style={{ color: '#cbd5e1' }} />
-                          }
-                        </span>
-                      </div>
-                      <div style={{ padding: '0 6px 6px' }}>
-                        <input
-                          type="text"
-                          placeholder="过滤..."
-                          value={filterState[field] || ''}
-                          onChange={(e) => { setFilterState((prev) => ({ ...prev, [field]: e.target.value })); setCurrentPage(1) }}
-                          onClick={(e) => e.stopPropagation()}
-                          style={{ width: '100%', fontSize: 10, padding: '3px 6px', border: '1px solid #e2e8f0', borderRadius: 4, outline: 'none', background: '#fff', color: '#0f172a', boxSizing: 'border-box' }}
-                        />
+                      <div style={{ display: 'flex', alignItems: 'stretch' }}>
+                        {/* Sort area */}
+                        <div
+                          onClick={() => setSortState((prev) => {
+                            if (prev?.field !== field) return { field, dir: 'asc' }
+                            if (prev.dir === 'asc') return { field, dir: 'desc' }
+                            return null
+                          })}
+                          style={{ flex: 1, padding: '8px 6px 8px 8px', display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', userSelect: 'none', minWidth: 0 }}
+                        >
+                          <span style={{ fontSize: 11, fontWeight: 600, color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+                          <span style={{ flexShrink: 0, color: '#2563eb' }}>
+                            {isSorted
+                              ? sortState!.dir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                              : <ArrowUpDown size={11} style={{ color: '#cbd5e1' }} />
+                            }
+                          </span>
+                        </div>
+
+                        {/* Filter button */}
+                        <button
+                          onClick={(e) => openFilterFor(field, e.currentTarget.closest('th') as HTMLElement)}
+                          title={isFiltered ? `已选 ${selectedCount} 项` : '筛选'}
+                          style={{
+                            flexShrink: 0, padding: '0 8px', border: 'none', borderLeft: '1px solid #e2e8f0',
+                            background: isOpen ? '#dbeafe' : isFiltered ? '#bfdbfe' : 'transparent',
+                            color: isFiltered || isOpen ? '#2563eb' : '#94a3b8',
+                            cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3,
+                            transition: 'background 0.1s',
+                          }}
+                        >
+                          <ListFilter size={11} />
+                          {isFiltered && <span style={{ fontSize: 10, fontWeight: 700 }}>{selectedCount}</span>}
+                        </button>
                       </div>
                     </th>
                   )
@@ -156,18 +247,27 @@ export default function MainContent({ onViz, onColConfig }: MainContentProps) {
         </div>
 
         {/* 过滤状态栏 */}
-        {Object.values(filterState).some(Boolean) && (
+        {hasAnyFilter && (
           <div style={{ padding: '7px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#2563eb', flexShrink: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden', fontSize: 11, color: '#fff' }}>
-              <span style={{ fontWeight: 700, opacity: 0.85, flexShrink: 0 }}>过滤中:</span>
-              {Object.entries(filterState).filter(([, v]) => v).map(([k, v]) => (
-                <span key={k} style={{ background: 'rgba(255,255,255,0.15)', padding: '2px 7px', borderRadius: 4, fontSize: 10, whiteSpace: 'nowrap' }}>
-                  {currentRecord.labels[currentRecord.fields.indexOf(k)] || k}: {v}
-                </span>
-              ))}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden', fontSize: 11, color: '#fff', flexWrap: 'wrap' }}>
+              <span style={{ fontWeight: 700, opacity: 0.85, flexShrink: 0 }}>筛选中:</span>
+              {Object.entries(filterState).filter(([, s]) => s.size > 0).map(([k, s]) => {
+                const lbl = currentRecord.labels[currentRecord.fields.indexOf(k)] || k
+                return (
+                  <span key={k} style={{ background: 'rgba(255,255,255,0.18)', padding: '2px 6px', borderRadius: 4, fontSize: 10, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
+                    {lbl}: {s.size === 1 ? [...s][0] : `${s.size} 项`}
+                    <button onClick={() => clearFilter(k)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.75)', display: 'flex', alignItems: 'center', padding: 0 }}>
+                      <X size={10} />
+                    </button>
+                  </span>
+                )
+              })}
               <span style={{ color: 'rgba(191,219,254,0.9)', marginLeft: 2 }}>({processedRows.length} 条)</span>
             </div>
-            <button onClick={() => setFilterState({})} style={{ background: '#fff', color: '#2563eb', border: 'none', borderRadius: 4, padding: '3px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0, marginLeft: 8 }}>
+            <button
+              onClick={() => { setFilterState({}); setCurrentPage(1) }}
+              style={{ background: '#fff', color: '#2563eb', border: 'none', borderRadius: 4, padding: '3px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0, marginLeft: 8 }}
+            >
               重置
             </button>
           </div>
@@ -207,8 +307,10 @@ export default function MainContent({ onViz, onColConfig }: MainContentProps) {
                     onClick={() => typeof p === 'number' && setCurrentPage(p)}
                     disabled={typeof p !== 'number'}
                     style={{
-                      width: 26, height: 26, border: p === currentPage ? '1px solid #2563eb' : typeof p === 'number' ? '1px solid #e2e8f0' : 'none',
-                      borderRadius: 5, fontSize: 11, fontWeight: 600, cursor: typeof p === 'number' ? 'pointer' : 'default',
+                      width: 26, height: 26,
+                      border: p === currentPage ? '1px solid #2563eb' : typeof p === 'number' ? '1px solid #e2e8f0' : 'none',
+                      borderRadius: 5, fontSize: 11, fontWeight: 600,
+                      cursor: typeof p === 'number' ? 'pointer' : 'default',
                       background: p === currentPage ? '#2563eb' : '#fff',
                       color: p === currentPage ? '#fff' : typeof p === 'number' ? '#475569' : '#94a3b8',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -235,6 +337,113 @@ export default function MainContent({ onViz, onColConfig }: MainContentProps) {
           </div>
         </div>
       </div>
+
+      {/* 筛选下拉弹层 (portal, 避免被 overflow:hidden 裁剪) */}
+      {mounted && openFilter && filterAnchor && createPortal(
+        <div
+          ref={dropdownRef}
+          style={{
+            position: 'fixed',
+            top: filterAnchor.top,
+            left: filterAnchor.left,
+            width: filterAnchor.width,
+            minWidth: 200,
+            maxWidth: 300,
+            background: '#fff',
+            border: '1px solid #e2e8f0',
+            borderRadius: 8,
+            boxShadow: '0 6px 24px rgba(0,0,0,0.12)',
+            zIndex: 9999,
+            overflow: 'hidden',
+          }}
+        >
+          {/* 搜索框 */}
+          <div style={{ padding: '8px 8px 6px', borderBottom: '1px solid #f1f5f9' }}>
+            <input
+              autoFocus
+              type="text"
+              placeholder="搜索值..."
+              value={filterSearch}
+              onChange={(e) => { setFilterSearch(e.target.value); setFilterPage(1) }}
+              style={{ width: '100%', fontSize: 11, padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 4, outline: 'none', color: '#0f172a', boxSizing: 'border-box' }}
+            />
+          </div>
+
+          {/* 全选 / 清除 */}
+          <div style={{ padding: '5px 8px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <button
+              onClick={() => {
+                setFilterState((prev) => ({ ...prev, [openFilter]: new Set(searched) }))
+                setCurrentPage(1)
+              }}
+              style={{ fontSize: 10, color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 600 }}
+            >
+              {filterSearch ? '全选结果' : '全选'}
+            </button>
+            <span style={{ color: '#e2e8f0' }}>|</span>
+            <button
+              onClick={() => { clearFilter(openFilter); }}
+              style={{ fontSize: 10, color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+            >
+              清除筛选
+            </button>
+            <span style={{ marginLeft: 'auto', fontSize: 10, color: '#94a3b8' }}>
+              {searched.length} 项
+            </span>
+          </div>
+
+          {/* 值列表 */}
+          <div>
+            {pageVals.length === 0 ? (
+              <div style={{ padding: '14px 8px', textAlign: 'center', fontSize: 11, color: '#94a3b8' }}>无匹配项</div>
+            ) : (
+              pageVals.map((val) => {
+                const checked = selectedSet.has(val)
+                return (
+                  <label
+                    key={val}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', cursor: 'pointer', borderBottom: '1px solid #f8fafc' }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#f8fafc' }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '' }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleValue(openFilter, val)}
+                      style={{ cursor: 'pointer', flexShrink: 0, accentColor: '#2563eb' }}
+                    />
+                    <span style={{ fontSize: 11, color: checked ? '#1d4ed8' : '#374151', fontWeight: checked ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {val === '' ? <em style={{ color: '#94a3b8' }}>(空)</em> : val}
+                    </span>
+                  </label>
+                )
+              })
+            )}
+          </div>
+
+          {/* 分页 */}
+          {totalValPages > 1 && (
+            <div style={{ padding: '6px 10px', borderTop: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f8fafc' }}>
+              <button
+                onClick={() => setFilterPage((p) => Math.max(1, p - 1))}
+                disabled={filterPage === 1}
+                style={{ width: 22, height: 22, border: '1px solid #e2e8f0', borderRadius: 4, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: filterPage === 1 ? 'not-allowed' : 'pointer', opacity: filterPage === 1 ? 0.4 : 1, color: '#475569' }}
+              >
+                <ChevronLeft size={11} />
+              </button>
+              <span style={{ fontSize: 10, color: '#64748b' }}>{filterPage} / {totalValPages} 页</span>
+              <button
+                onClick={() => setFilterPage((p) => Math.min(totalValPages, p + 1))}
+                disabled={filterPage === totalValPages}
+                style={{ width: 22, height: 22, border: '1px solid #e2e8f0', borderRadius: 4, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: filterPage === totalValPages ? 'not-allowed' : 'pointer', opacity: filterPage === totalValPages ? 0.4 : 1, color: '#475569' }}
+              >
+                <ChevronRight size={11} />
+              </button>
+            </div>
+          )}
+        </div>,
+        document.body
+      )}
     </div>
   )
 }
@@ -256,7 +465,7 @@ function TableRow({ row, fields }: { row: Record<string, string>; fields: string
   )
 }
 
-function ToolbarBtn({ onClick, icon, label, accent }: { onClick: () => void; icon: React.ReactNode; label: string; accent?: boolean }) {
+function ToolbarBtn({ onClick, icon, label, accent, dot }: { onClick: () => void; icon: React.ReactNode; label: string; accent?: boolean; dot?: boolean }) {
   const [hovered, setHovered] = useState(false)
   return (
     <button
@@ -264,7 +473,7 @@ function ToolbarBtn({ onClick, icon, label, accent }: { onClick: () => void; ico
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', fontSize: 12, fontWeight: 500,
+        position: 'relative', display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', fontSize: 12, fontWeight: 500,
         border: `1px solid ${accent && hovered ? '#2563eb' : '#e2e8f0'}`,
         borderRadius: 6, cursor: 'pointer',
         background: accent && hovered ? '#2563eb' : '#fff',
@@ -273,6 +482,9 @@ function ToolbarBtn({ onClick, icon, label, accent }: { onClick: () => void; ico
       }}
     >
       {icon} {label}
+      {dot && (
+        <span style={{ position: 'absolute', top: 3, right: 3, width: 6, height: 6, borderRadius: '50%', background: '#ef4444', border: '1.5px solid #fff' }} />
+      )}
     </button>
   )
 }

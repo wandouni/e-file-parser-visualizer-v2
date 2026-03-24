@@ -26,6 +26,7 @@ interface AppContextValue {
   loadHistoryRows: (caseId: string, historyId: string) => Promise<HistoryRecord | null>
   addHistory: (record: HistoryRecord) => void
   removeHistory: (id: string) => Promise<void>
+  removeHistories: (ids: string[]) => Promise<void>
   clearHistories: (caseId: string) => Promise<void>
   updateHistory: (record: HistoryRecord) => Promise<void>
   setCurrentId: (id: string | null) => void
@@ -149,6 +150,18 @@ export function AppProvider({ children, profile, initialCase }: { children: Reac
     showToast('记录已删除')
   }, [activeCaseId, currentId, showToast])
 
+  const removeHistories = useCallback(async (ids: string[]) => {
+    if (!activeCaseId || ids.length === 0) return
+    const idSet = new Set(ids)
+    await Promise.all(ids.map((id) => fetch(`/api/cases/${activeCaseId}/histories/${id}`, { method: 'DELETE' })))
+    setHistories((prev) => {
+      const next = prev.filter((h) => !idSet.has(h.id))
+      if (currentId && idSet.has(currentId)) setCurrentId(next[0]?.id || null)
+      return next
+    })
+    showToast(`已删除 ${ids.length} 条记录`)
+  }, [activeCaseId, currentId, showToast])
+
   // 清空
   const clearHistories = useCallback(async (caseId: string) => {
     await fetch(`/api/cases/${caseId}/histories`, { method: 'DELETE' })
@@ -164,6 +177,7 @@ export function AppProvider({ children, profile, initialCase }: { children: Reac
       col_config: record.colConfig,
       page_size: record.pageSize,
       viz_configs: record.vizConfigs.map(({ _collapsed: _, ...rest }) => rest),
+      multi_subject_config: record.multiSubjectConfig ?? null,
       section_tag: record.sectionTag,
     }
     await fetch(`/api/cases/${activeCaseId}/histories/${record.id}`, {
@@ -230,7 +244,7 @@ export function AppProvider({ children, profile, initialCase }: { children: Reac
     <AppContext.Provider value={{
       cases, histories, currentId, activeCase, profile, loading,
       loadCases, createCase, deleteCase, renameCase, setActiveCaseId, activeCaseId,
-      loadHistories, loadHistoryRows, addHistory, removeHistory, clearHistories, updateHistory,
+      loadHistories, loadHistoryRows, addHistory, removeHistory, removeHistories, clearHistories, updateHistory,
       setCurrentId, myRole, exportData, importData, showToast,
     }}>
       {children}
@@ -260,6 +274,7 @@ function normalizeHistory(raw: any): HistoryRecord {
     colConfig: raw.col_config || {},
     pageSize: raw.page_size || 22,
     vizConfigs: (raw.viz_configs || []) as VizConfig[],
+    multiSubjectConfig: raw.multi_subject_config ?? null,
     sortOrder: raw.sort_order || 0,
   }
 }

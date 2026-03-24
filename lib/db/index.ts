@@ -78,6 +78,9 @@ function initDb() {
     );
   `)
 
+  // Add columns introduced after initial schema (idempotent)
+  try { sqlite.exec(`ALTER TABLE histories ADD COLUMN multi_subject_config TEXT DEFAULT NULL`) } catch {}
+
   return drizzle(sqlite, { schema })
 }
 

@@ -53,6 +53,7 @@ export async function PATCH(
   if ('col_config' in body) updates.colConfig = body.col_config
   if ('page_size' in body) updates.pageSize = body.page_size
   if ('viz_configs' in body) updates.vizConfigs = body.viz_configs
+  if ('multi_subject_config' in body) updates.multiSubjectConfig = body.multi_subject_config
   if ('section_tag' in body) updates.sectionTag = body.section_tag
 
   if (Object.keys(updates).length === 0) return err('没有可更新的字段')
