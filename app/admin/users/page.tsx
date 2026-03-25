@@ -5,6 +5,7 @@ export const dynamic = 'force-dynamic'
 import { useState, useEffect, useCallback } from 'react'
 import LiveSpec from '@/components/LiveSpec'
 import { spec, pageName } from './live-spec'
+import { history } from './live-spec.history'
 
 interface UserRow {
   id: string
@@ -58,7 +59,7 @@ export default function AdminUsersPage() {
 
   return (
     <div>
-      <LiveSpec content={spec} pageName={pageName} />
+      <LiveSpec content={spec} pageName={pageName} history={history} />
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <h1 style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>用户管理 ({total})</h1>

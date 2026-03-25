@@ -8,6 +8,7 @@ import { notFound, redirect } from 'next/navigation'
 import WorkspaceClient from '@/components/WorkspaceClient'
 import LiveSpec from '@/components/LiveSpec'
 import { spec, pageName } from './live-spec'
+import { history } from './live-spec.history'
 import type { Profile } from '@/types'
 
 export default async function CaseWorkspacePage({
@@ -61,7 +62,7 @@ export default async function CaseWorkspacePage({
         }}
         profile={profile}
       />
-      <LiveSpec content={spec} pageName={pageName} />
+      <LiveSpec content={spec} pageName={pageName} history={history} />
     </>
   )
 }

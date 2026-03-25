@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import LiveSpec from '@/components/LiveSpec'
 import { spec, pageName } from './live-spec'
+import { history } from './live-spec.history'
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
@@ -68,7 +69,7 @@ export default function RegisterPage() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9' }}>
-      <LiveSpec content={spec} pageName={pageName} />
+      <LiveSpec content={spec} pageName={pageName} history={history} />
       <div style={{ background: '#fff', borderRadius: 16, boxShadow: '0 4px 24px rgba(0,0,0,0.08)', padding: '40px 36px', width: '100%', maxWidth: 380 }}>
 
         <div style={{ textAlign: 'center', marginBottom: 28 }}>

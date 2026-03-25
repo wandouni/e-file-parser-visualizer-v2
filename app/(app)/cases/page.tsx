@@ -7,6 +7,7 @@ import { eq } from 'drizzle-orm'
 import CaseManagementClient from '@/components/CaseManagementClient'
 import LiveSpec from '@/components/LiveSpec'
 import { spec, pageName } from './live-spec'
+import { history } from './live-spec.history'
 import type { Profile } from '@/types'
 
 export default async function CasesPage() {
@@ -32,7 +33,7 @@ export default async function CasesPage() {
   return (
     <>
       <CaseManagementClient profile={profile} />
-      <LiveSpec content={spec} pageName={pageName} />
+      <LiveSpec content={spec} pageName={pageName} history={history} />
     </>
   )
 }

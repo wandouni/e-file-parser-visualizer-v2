@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import LiveSpec from '@/components/LiveSpec'
 import { spec, pageName } from './live-spec'
+import { history } from './live-spec.history'
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
@@ -156,7 +157,7 @@ export default function LoginPage() {
       }>
         <LoginForm />
       </Suspense>
-      <LiveSpec content={spec} pageName={pageName} />
+      <LiveSpec content={spec} pageName={pageName} history={history} />
     </>
   )
 }

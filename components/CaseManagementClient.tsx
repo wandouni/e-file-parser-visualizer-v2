@@ -335,7 +335,7 @@ function CaseRow({
       <td style={{ padding: '13px 16px', fontSize: 12, color: '#64748b' }}>{formatDate(c.createdAt)}</td>
       <td style={{ padding: '13px 16px', fontSize: 12, color: '#64748b' }}>{c.historyCount ?? 0}</td>
       <td style={{ padding: '13px 16px' }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 2, opacity: hovered ? 1 : 0, transition: 'opacity 0.15s' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           {c.myRole === 'owner' && (
             <button onClick={onEditStart} title="重命名" style={{ padding: 5, borderRadius: 5, border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', alignItems: 'center' }}>
               <Pencil size={13} />

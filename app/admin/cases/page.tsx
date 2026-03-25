@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import LiveSpec from '@/components/LiveSpec'
 import { spec, pageName } from './live-spec'
+import { history } from './live-spec.history'
 
 interface CaseRow {
   id: string
@@ -49,7 +50,7 @@ export default function AdminCasesPage() {
 
   return (
     <div>
-      <LiveSpec content={spec} pageName={pageName} />
+      <LiveSpec content={spec} pageName={pageName} history={history} />
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <h1 style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>案例管理 ({total})</h1>
