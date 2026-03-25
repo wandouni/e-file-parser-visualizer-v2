@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useDeferredValue } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, Link as LinkIcon, X, ChevronLeft, Edit3, Search, Folder, ChevronRight } from 'lucide-react'
 import { useApp } from '@/context/AppContext'
@@ -10,6 +10,7 @@ import type { HistoryRecord } from '@/types'
 interface SidebarProps {
   onImport: () => void
   onJoin: () => void
+  onRequestClose?: () => void
 }
 
 type FolderNode = {
@@ -69,7 +70,7 @@ function collectIds(node: FolderNode): string[] {
   ]
 }
 
-export default function Sidebar({ onImport, onJoin }: SidebarProps) {
+export default function Sidebar({ onImport, onJoin, onRequestClose }: SidebarProps) {
   const router = useRouter()
   const {
     histories, currentId, setCurrentId, removeHistory, removeHistories, clearHistories,
@@ -112,9 +113,14 @@ export default function Sidebar({ onImport, onJoin }: SidebarProps) {
     return (
       <div
         key={h.id}
+        role="button"
+        tabIndex={0}
+        aria-pressed={isActive}
+        aria-label={`选择记录：${h.sectionTag || '未命名'}`}
         onMouseEnter={() => setHoveredItem(h.id)}
         onMouseLeave={() => setHoveredItem(null)}
         onClick={() => setCurrentId(h.id)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setCurrentId(h.id) } }}
         style={{
           position: 'relative',
           padding: '8px 8px',
@@ -140,6 +146,7 @@ export default function Sidebar({ onImport, onJoin }: SidebarProps) {
         {(myRole === 'owner' || myRole === 'editor') && (
           <button
             onClick={(e) => { e.stopPropagation(); setDeleteId(h.id) }}
+            aria-label={`删除记录：${h.sectionTag || '未命名'}`}
             style={{ position: 'absolute', top: 6, right: 6, background: 'none', border: 'none', cursor: 'pointer', color: '#475569', display: 'flex', alignItems: 'center', opacity: isHovered ? 1 : 0, transition: 'opacity 0.15s', padding: 2 }}
           >
             <X size={11} />
@@ -157,7 +164,12 @@ export default function Sidebar({ onImport, onJoin }: SidebarProps) {
     return (
       <div key={node.path}>
         <div
+          role="button"
+          tabIndex={0}
+          aria-expanded={!isCollapsed}
+          aria-label={`${isCollapsed ? '展开' : '折叠'}文件夹：${node.name}，共 ${total} 条记录`}
           onClick={() => toggleFolder(node.path)}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleFolder(node.path) } }}
           onMouseEnter={() => setHoveredFolder(node.path)}
           onMouseLeave={() => setHoveredFolder(null)}
           style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 8px', paddingLeft: 8 + depth * 12, cursor: 'pointer', borderRadius: 5, marginBottom: 1, userSelect: 'none', background: isHovered ? 'rgba(255,255,255,0.04)' : 'transparent', transition: 'background 0.1s' }}
@@ -172,6 +184,7 @@ export default function Sidebar({ onImport, onJoin }: SidebarProps) {
           {canEdit && (
             <button
               onClick={(e) => { e.stopPropagation(); setDeleteFolderPath(node.path) }}
+              aria-label={`删除文件夹：${node.name}`}
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#475569', display: 'flex', alignItems: 'center', padding: 2, borderRadius: 3, opacity: isHovered ? 1 : 0, transition: 'opacity 0.15s', flexShrink: 0 }}
             >
               <X size={11} />
@@ -188,14 +201,20 @@ export default function Sidebar({ onImport, onJoin }: SidebarProps) {
     )
   }
 
-  const isSearching = fileSearchTerm.trim().length > 0
-  const filteredHistories = histories.filter((h) =>
-    (h.sectionTag || '').toLowerCase().includes(fileSearchTerm.toLowerCase())
+  // Defer the search term so typing stays responsive even with large history lists
+  const deferredSearchTerm = useDeferredValue(fileSearchTerm)
+  const isSearching = deferredSearchTerm.trim().length > 0
+  const filteredHistories = useMemo(
+    () => histories.filter((h) =>
+      (h.sectionTag || '').toLowerCase().includes(deferredSearchTerm.toLowerCase())
+    ),
+    [histories, deferredSearchTerm]
   )
-  const { ungrouped, roots } = buildFolderTree(histories)
+  // Memoize tree build — only recomputes when histories array changes
+  const { ungrouped, roots } = useMemo(() => buildFolderTree(histories), [histories])
 
   return (
-    <div style={{ width: 240, background: '#0f172a', display: 'flex', flexDirection: 'column', height: '100%', flexShrink: 0, zIndex: 10 }}>
+    <nav aria-label="历史记录导航" style={{ width: 240, background: 'var(--bg-sidebar)', display: 'flex', flexDirection: 'column', height: '100%', flexShrink: 0, zIndex: 10 }}>
 
       <ConfirmModal
         isOpen={!!deleteId}
@@ -243,13 +262,26 @@ export default function Sidebar({ onImport, onJoin }: SidebarProps) {
       />
 
       {/* 顶部操作栏 */}
-      <div style={{ height: 42, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 8px', background: '#020617', borderBottom: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
-        <button
-          onClick={() => router.push('/cases')}
-          style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600, color: '#94a3b8', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 5, padding: '4px 8px', cursor: 'pointer' }}
-        >
-          <ChevronLeft size={12} /> 返回
-        </button>
+      <div style={{ height: 42, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 8px', background: 'var(--bg-sidebar-top)', borderBottom: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <button
+            onClick={() => router.push('/cases')}
+            style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600, color: '#94a3b8', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 5, padding: '4px 8px', cursor: 'pointer' }}
+          >
+            <ChevronLeft size={12} /> 返回
+          </button>
+          {/* Mobile close button — visible on mobile via min-height touch-target rule */}
+          {onRequestClose && (
+            <button
+              onClick={onRequestClose}
+              aria-label="关闭侧边栏"
+              className="sidebar-close-btn"
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 5, padding: '4px 6px', cursor: 'pointer', color: '#94a3b8' }}
+            >
+              <X size={12} />
+            </button>
+          )}
+        </div>
 
         {myRole === 'owner' && (
           <button
@@ -275,7 +307,11 @@ export default function Sidebar({ onImport, onJoin }: SidebarProps) {
           />
         ) : (
           <div
+            role={myRole === 'owner' ? 'button' : undefined}
+            tabIndex={myRole === 'owner' ? 0 : undefined}
+            aria-label={myRole === 'owner' ? `重命名案例：${activeCase?.name || '未命名案例'}` : undefined}
             onClick={() => myRole === 'owner' && setIsEditingName(true)}
+            onKeyDown={(e) => { if (myRole === 'owner' && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setIsEditingName(true) } }}
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '3px 4px', borderRadius: 5, cursor: myRole === 'owner' ? 'pointer' : 'default' }}
           >
             <span style={{ fontSize: 12, fontWeight: 700, color: '#f1f5f9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 4 }}>
@@ -300,13 +336,14 @@ export default function Sidebar({ onImport, onJoin }: SidebarProps) {
           <Search size={11} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: '#475569' }} />
           <input
             type="text"
+            aria-label="搜索历史记录"
             placeholder="搜索文件..."
             value={fileSearchTerm}
             onChange={(e) => setFileSearchTerm(e.target.value)}
             style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 5, padding: '6px 26px 6px 26px', fontSize: 11, color: '#e2e8f0', outline: 'none', boxSizing: 'border-box' }}
           />
           {fileSearchTerm && (
-            <button onClick={() => setFileSearchTerm('')} style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#475569', display: 'flex', alignItems: 'center' }}>
+            <button onClick={() => setFileSearchTerm('')} aria-label="清除搜索" style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#475569', display: 'flex', alignItems: 'center' }}>
               <X size={11} />
             </button>
           )}
@@ -338,7 +375,7 @@ export default function Sidebar({ onImport, onJoin }: SidebarProps) {
       </div>
 
       {/* 底部工具栏 */}
-      <div style={{ padding: 8, borderTop: '1px solid rgba(255,255,255,0.06)', background: '#020617', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 5 }}>
+      <div style={{ padding: 8, borderTop: '1px solid rgba(255,255,255,0.06)', background: 'var(--bg-sidebar-top)', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 5 }}>
         {(myRole === 'owner' || myRole === 'editor') && (
           <button
             onClick={onJoin}
@@ -348,6 +385,6 @@ export default function Sidebar({ onImport, onJoin }: SidebarProps) {
           </button>
         )}
       </div>
-    </div>
+    </nav>
   )
 }

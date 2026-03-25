@@ -98,3 +98,25 @@ Parses proprietary text format:
 - **Page size default**: 22 rows (set in `normalizeHistory` and in the POST histories route).
 - **Chart rendering**: VizModal uses `rowCount = sourceRecord?.rows.length ?? 0` as a `useEffect` dependency to re-trigger chart generation after async row loading completes.
 - **First admin**: Use `sqlite3 data/app.db "UPDATE profiles SET is_admin=1 WHERE email='your@email.com'"` to grant admin access.
+
+## Design Context
+
+### Users
+Chinese power-grid engineers and technical analysts. They work in focused, data-heavy sessions — reading tabular E-file data, comparing histories, running visualizations. The interface must be efficient and low-friction. They expect professional tooling, not consumer-grade design.
+
+### Brand Personality
+**Professional · Precise · Trustworthy**
+
+The tool should evoke confidence and control. No decoration for decoration's sake. Every visual element earns its place by aiding comprehension or reducing cognitive load.
+
+### Aesthetic Direction
+- **Reference:** VS Code / IDE-style — panel-based layout, compact information density, clear active/inactive states, subtle but precise visual hierarchy
+- **Theme:** Light mode primary (current light main + dark sidebar split is intentional and must be preserved)
+- **Anti-reference:** Avoid consumer SaaS aesthetics (rounded card stacks, pastel colors, large whitespace padding). This is a power tool.
+
+### Design Principles
+1. **Density over decoration.** 12px base font is a feature, not a bug. Never pad layouts or increase font sizes just to fill space.
+2. **High contrast is non-negotiable.** All text must meet or exceed WCAG AA contrast. The user explicitly requires 高对比度 (high contrast).
+3. **Sidebar = command center.** The dark sidebar (`#0f172a`) is the primary navigation surface. Active states must be immediately obvious.
+4. **State clarity first.** Buttons, inputs, rows, and tabs must have unambiguous hover, active, disabled, and focus states.
+5. **Chinese typography precision.** PingFang SC / Microsoft YaHei at small sizes requires careful weight tuning. Prefer `fontWeight: 500–600` for labels; avoid light weights below 13px.

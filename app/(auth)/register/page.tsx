@@ -81,13 +81,16 @@ export default function RegisterPage() {
         <form onSubmit={handleRegister}>
           {fields.map(({ key, label, placeholder, type }) => (
             <div key={key} style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#475569', marginBottom: 5 }}>{label}</label>
+              <label htmlFor={`register-${key}`} style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#475569', marginBottom: 5 }}>{label}</label>
               <input
+                id={`register-${key}`}
                 type={type}
                 value={form[key]}
                 onChange={(e) => set(key, e.target.value)}
                 placeholder={placeholder}
                 required={key !== 'displayName'}
+                aria-invalid={!!error || undefined}
+                aria-describedby={error ? 'register-error' : undefined}
                 onFocus={() => setFocusedField(key)}
                 onBlur={() => setFocusedField('')}
                 style={{ ...inputStyle, borderColor: focusedField === key ? '#2563eb' : '#e2e8f0', boxShadow: focusedField === key ? '0 0 0 3px rgba(37,99,235,0.1)' : 'none' }}
@@ -96,7 +99,7 @@ export default function RegisterPage() {
           ))}
 
           {error && (
-            <div style={{ fontSize: 12, color: '#ef4444', background: '#fef2f2', borderRadius: 8, padding: '8px 12px', marginBottom: 16 }}>{error}</div>
+            <div id="register-error" role="alert" style={{ fontSize: 12, color: '#ef4444', background: '#fef2f2', borderRadius: 8, padding: '8px 12px', marginBottom: 16 }}>{error}</div>
           )}
 
           <button

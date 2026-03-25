@@ -1,18 +1,19 @@
 'use client'
 
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useDeferredValue } from 'react'
 import { createPortal } from 'react-dom'
-import { BarChart2, Settings, ArrowUp, ArrowDown, ArrowUpDown, ChevronLeft, ChevronRight, ListFilter, X } from 'lucide-react'
+import { BarChart2, Settings, ArrowUp, ArrowDown, ArrowUpDown, ChevronLeft, ChevronRight, ListFilter, X, Menu } from 'lucide-react'
 import { useApp } from '@/context/AppContext'
 
 interface MainContentProps {
   onViz: () => void
   onColConfig: () => void
+  onToggleSidebar: () => void
 }
 
 const FILTER_PAGE_SIZE = 10  // values per page inside the filter dropdown
 
-export default function MainContent({ onViz, onColConfig }: MainContentProps) {
+export default function MainContent({ onViz, onColConfig, onToggleSidebar }: MainContentProps) {
   const { histories, currentId, updateHistory, loadHistoryRows, activeCaseId, myRole } = useApp()
 
   const [sortState, setSortState] = useState<{ field: string; dir: 'asc' | 'desc' } | null>(null)
@@ -26,6 +27,7 @@ export default function MainContent({ onViz, onColConfig }: MainContentProps) {
   const [filterPage, setFilterPage] = useState(1)
   const [filterAnchor, setFilterAnchor] = useState<{ top: number; left: number; width: number } | null>(null)
   const [mounted, setMounted] = useState(false)
+  const [hoveredFilterVal, setHoveredFilterVal] = useState<string | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { setMounted(true) }, [])
@@ -100,6 +102,9 @@ export default function MainContent({ onViz, onColConfig }: MainContentProps) {
     return rows
   }, [currentRecord, filterState, sortState])
 
+  // Must be called before any early returns (Rules of Hooks)
+  const deferredFilterSearch = useDeferredValue(filterSearch)
+
   if (!currentRecord) {
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#94a3b8' }}>
@@ -145,8 +150,8 @@ export default function MainContent({ onViz, onColConfig }: MainContentProps) {
   // --- Dropdown content ---
   const dropdownField = openFilter
   const allVals = dropdownField ? (distinctValues[dropdownField] || []) : []
-  const searched = filterSearch
-    ? allVals.filter((v) => v.toLowerCase().includes(filterSearch.toLowerCase()))
+  const searched = deferredFilterSearch
+    ? allVals.filter((v) => v.toLowerCase().includes(deferredFilterSearch.toLowerCase()))
     : allVals
   const totalValPages = Math.max(1, Math.ceil(searched.length / FILTER_PAGE_SIZE))
   const pageVals = searched.slice((filterPage - 1) * FILTER_PAGE_SIZE, filterPage * FILTER_PAGE_SIZE)
@@ -157,8 +162,16 @@ export default function MainContent({ onViz, onColConfig }: MainContentProps) {
       <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
 
         {/* 工具栏 */}
-        <div style={{ height: 44, borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', padding: '0 14px', gap: 12, flexShrink: 0, background: '#f8fafc' }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 320 }}>
+        <div style={{ height: 44, borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', padding: '0 8px 0 10px', gap: 8, flexShrink: 0, background: 'var(--bg-muted)' }}>
+          {/* Sidebar toggle — allows collapsing sidebar on any screen size (VS Code-style) */}
+          <button
+            onClick={onToggleSidebar}
+            aria-label="切换侧边栏"
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px 6px', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--bg-surface)', color: 'var(--text2)', cursor: 'pointer', flexShrink: 0 }}
+          >
+            <Menu size={13} aria-hidden="true" />
+          </button>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
             {currentRecord.sectionTag}
             {currentRecord.meta.Time && (
               <span style={{ marginLeft: 8, fontSize: 11, color: '#94a3b8', fontWeight: 400 }}>{currentRecord.meta.Time.substring(0, 16)}</span>
@@ -193,11 +206,15 @@ export default function MainContent({ onViz, onColConfig }: MainContentProps) {
                       <div style={{ display: 'flex', alignItems: 'stretch' }}>
                         {/* Sort area */}
                         <div
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`按 ${label} 排序${isSorted ? (sortState!.dir === 'asc' ? '（升序）' : '（降序）') : ''}`}
                           onClick={() => setSortState((prev) => {
                             if (prev?.field !== field) return { field, dir: 'asc' }
                             if (prev.dir === 'asc') return { field, dir: 'desc' }
                             return null
                           })}
+                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSortState((prev) => { if (prev?.field !== field) return { field, dir: 'asc' }; if (prev.dir === 'asc') return { field, dir: 'desc' }; return null }) } }}
                           style={{ flex: 1, padding: '8px 6px 8px 8px', display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', userSelect: 'none', minWidth: 0 }}
                         >
                           <span style={{ fontSize: 11, fontWeight: 600, color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
@@ -212,7 +229,8 @@ export default function MainContent({ onViz, onColConfig }: MainContentProps) {
                         {/* Filter button */}
                         <button
                           onClick={(e) => openFilterFor(field, e.currentTarget.closest('th') as HTMLElement)}
-                          title={isFiltered ? `已选 ${selectedCount} 项` : '筛选'}
+                          aria-label={isFiltered ? `筛选 ${label}（已选 ${selectedCount} 项）` : `筛选 ${label}`}
+                          aria-pressed={isFiltered}
                           style={{
                             flexShrink: 0, padding: '0 8px', border: 'none', borderLeft: '1px solid #e2e8f0',
                             background: isOpen ? '#dbeafe' : isFiltered ? '#bfdbfe' : 'transparent',
@@ -256,8 +274,8 @@ export default function MainContent({ onViz, onColConfig }: MainContentProps) {
                 return (
                   <span key={k} style={{ background: 'rgba(255,255,255,0.18)', padding: '2px 6px', borderRadius: 4, fontSize: 10, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
                     {lbl}: {s.size === 1 ? [...s][0] : `${s.size} 项`}
-                    <button onClick={() => clearFilter(k)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.75)', display: 'flex', alignItems: 'center', padding: 0 }}>
-                      <X size={10} />
+                    <button onClick={() => clearFilter(k)} aria-label={`清除 ${lbl} 筛选`} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.75)', display: 'flex', alignItems: 'center', padding: 0 }}>
+                      <X size={10} aria-hidden="true" />
                     </button>
                   </span>
                 )
@@ -402,9 +420,9 @@ export default function MainContent({ onViz, onColConfig }: MainContentProps) {
                 return (
                   <label
                     key={val}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', cursor: 'pointer', borderBottom: '1px solid #f8fafc' }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#f8fafc' }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '' }}
+                    onMouseEnter={() => setHoveredFilterVal(val)}
+                    onMouseLeave={() => setHoveredFilterVal(null)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', cursor: 'pointer', borderBottom: '1px solid #f8fafc', background: hoveredFilterVal === val ? '#f8fafc' : '' }}
                   >
                     <input
                       type="checkbox"

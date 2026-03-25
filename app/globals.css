@@ -1,16 +1,45 @@
 @import "tailwindcss";
 
 :root {
+  /* Layout */
   --sidebar-w: 240px;
+
+  /* Colors */
   --accent: #2563eb;
+  --accent-hover: #1d4ed8;
   --accent-light: #eff6ff;
+  --accent-ring: rgba(37, 99, 235, 0.15);
   --border: #e2e8f0;
+  --border-strong: #cbd5e1;
   --text: #0f172a;
   --text2: #475569;
   --text3: #94a3b8;
   --bg-sidebar: #0f172a;
+  --bg-sidebar-top: #020617;
+  --bg-sidebar-hover: rgba(255, 255, 255, 0.04);
+  --bg-sidebar-active: rgba(59, 130, 246, 0.12);
   --bg-main: #f1f5f9;
+  --bg-surface: #fff;
+  --bg-muted: #f8fafc;
   --danger: #ef4444;
+  --success: #22c55e;
+
+  /* Border radius */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+  --radius-2xl: 12px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.12);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.18);
+  --shadow-xl: 0 20px 60px rgba(0, 0, 0, 0.2);
+
+  /* Motion */
+  --duration-fast: 0.1s;
+  --duration-normal: 0.15s;
 }
 
 * {
@@ -54,6 +83,73 @@ input[type='number']::-webkit-inner-spin-button {
   -webkit-appearance: none;
 }
 
-.text-glow {
-  text-shadow: 0 0 8px rgba(37, 99, 235, 0.5);
+/* Focus indicators — applies to any focusable element not overriding outline via inline style */
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Keyframe animations (centralised — do not duplicate inline) */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── Mobile sidebar overlay ──────────────────────────────────────────────── */
+/* On mobile the sidebar leaves the flex flow and becomes a fixed overlay.     */
+/* The .is-open class controls visibility; the backdrop appears automatically. */
+
+.sidebar-backdrop {
+  display: none; /* hidden on desktop */
+}
+
+/* Desktop sidebar collapse — hide when not open */
+@media (min-width: 768px) {
+  .sidebar-panel:not(.is-open) {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .sidebar-panel {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    height: 100% !important;
+    z-index: 100;
+    transform: translateX(-100%);
+    transition: transform var(--duration-normal) ease-in-out;
+  }
+  .sidebar-panel.is-open {
+    transform: translateX(0);
+  }
+  .sidebar-backdrop {
+    display: block; /* shown on mobile only when rendered */
+  }
+}
+
+/* ─── Minimum touch targets ───────────────────────────────────────────────── */
+/* Ensures interactive controls are large enough to tap reliably on mobile.    */
+@media (max-width: 767px) {
+  button, [role="button"] {
+    min-height: 36px;
+    min-width: 36px;
+  }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
