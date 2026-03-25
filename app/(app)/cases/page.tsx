@@ -5,6 +5,8 @@ import { db } from '@/lib/db'
 import { profiles } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import CaseManagementClient from '@/components/CaseManagementClient'
+import LiveSpec from '@/components/LiveSpec'
+import { spec, pageName } from './live-spec'
 import type { Profile } from '@/types'
 
 export default async function CasesPage() {
@@ -27,5 +29,10 @@ export default async function CasesPage() {
       }
     : null
 
-  return <CaseManagementClient profile={profile} />
+  return (
+    <>
+      <CaseManagementClient profile={profile} />
+      <LiveSpec content={spec} pageName={pageName} />
+    </>
+  )
 }

@@ -5,6 +5,8 @@ export const dynamic = 'force-dynamic'
 import { useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import LiveSpec from '@/components/LiveSpec'
+import { spec, pageName } from './live-spec'
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
@@ -146,12 +148,15 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9' }}>
-        <span style={{ fontSize: 12, color: '#94a3b8' }}>加载中…</span>
-      </div>
-    }>
-      <LoginForm />
-    </Suspense>
+    <>
+      <Suspense fallback={
+        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9' }}>
+          <span style={{ fontSize: 12, color: '#94a3b8' }}>加载中…</span>
+        </div>
+      }>
+        <LoginForm />
+      </Suspense>
+      <LiveSpec content={spec} pageName={pageName} />
+    </>
   )
 }

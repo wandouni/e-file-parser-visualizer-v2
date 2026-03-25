@@ -3,6 +3,8 @@ export const dynamic = 'force-dynamic'
 import { db } from '@/lib/db'
 import { profiles, cases, histories } from '@/lib/db/schema'
 import { eq, gte, count } from 'drizzle-orm'
+import LiveSpec from '@/components/LiveSpec'
+import { spec, pageName } from './live-spec'
 
 async function getStats() {
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
@@ -32,6 +34,7 @@ export default async function AdminDashboard() {
 
   return (
     <div>
+      <LiveSpec content={spec} pageName={pageName} />
       <h1 style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', marginBottom: 20 }}>系统总览</h1>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
         {statCards.map(({ label, value, sub, color }) => (

@@ -4,6 +4,8 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import LiveSpec from '@/components/LiveSpec'
+import { spec, pageName } from './live-spec'
 
 export default function InvitePage() {
   const { token } = useParams<{ token: string }>()
@@ -29,6 +31,7 @@ export default function InvitePage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg-main)' }}>
+      <LiveSpec content={spec} pageName={pageName} />
       <div className="bg-white border rounded-xl shadow-lg p-8 text-center max-w-sm w-full" style={{ borderColor: 'var(--border)' }}>
         {status === 'loading' && (
           <>

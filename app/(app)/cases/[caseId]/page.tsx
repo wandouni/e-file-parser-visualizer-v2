@@ -6,6 +6,8 @@ import { cases, caseMembers, profiles } from '@/lib/db/schema'
 import { eq, and } from 'drizzle-orm'
 import { notFound, redirect } from 'next/navigation'
 import WorkspaceClient from '@/components/WorkspaceClient'
+import LiveSpec from '@/components/LiveSpec'
+import { spec, pageName } from './live-spec'
 import type { Profile } from '@/types'
 
 export default async function CaseWorkspacePage({
@@ -47,16 +49,19 @@ export default async function CaseWorkspacePage({
     : null
 
   return (
-    <WorkspaceClient
-      caseData={{
-        id: caseData.id,
-        name: caseData.name,
-        ownerId: caseData.ownerId,
-        createdAt: caseData.createdAt,
-        updatedAt: caseData.updatedAt,
-        myRole: (member?.role ?? 'viewer') as any,
-      }}
-      profile={profile}
-    />
+    <>
+      <WorkspaceClient
+        caseData={{
+          id: caseData.id,
+          name: caseData.name,
+          ownerId: caseData.ownerId,
+          createdAt: caseData.createdAt,
+          updatedAt: caseData.updatedAt,
+          myRole: (member?.role ?? 'viewer') as any,
+        }}
+        profile={profile}
+      />
+      <LiveSpec content={spec} pageName={pageName} />
+    </>
   )
 }
