@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useDeferredValue } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, Link as LinkIcon, X, ChevronLeft, Edit3, Search, Folder, ChevronRight } from 'lucide-react'
 import { useApp } from '@/context/AppContext'
@@ -202,7 +202,7 @@ export default function Sidebar({ onImport, onJoin, onRequestClose }: SidebarPro
   }
 
   // Defer the search term so typing stays responsive even with large history lists
-  const deferredSearchTerm = useDeferredValue(fileSearchTerm)
+  const deferredSearchTerm = fileSearchTerm
   const isSearching = deferredSearchTerm.trim().length > 0
   const filteredHistories = useMemo(
     () => histories.filter((h) =>

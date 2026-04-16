@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useRef, useDeferredValue } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { BarChart2, Settings, ArrowUp, ArrowDown, ArrowUpDown, ChevronLeft, ChevronRight, ListFilter, X, Menu } from 'lucide-react'
 import { useApp } from '@/context/AppContext'
@@ -103,7 +103,7 @@ export default function MainContent({ onViz, onColConfig, onToggleSidebar }: Mai
   }, [currentRecord, filterState, sortState])
 
   // Must be called before any early returns (Rules of Hooks)
-  const deferredFilterSearch = useDeferredValue(filterSearch)
+  const deferredFilterSearch = filterSearch
 
   if (!currentRecord) {
     return (

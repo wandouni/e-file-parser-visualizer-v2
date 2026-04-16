@@ -67,10 +67,13 @@ export function AppProvider({ children, profile, initialCase }: { children: Reac
   // 加载案例列表
   const loadCases = useCallback(async () => {
     setLoading(true)
-    const res = await fetch('/api/cases')
-    const { data } = await res.json()
-    setCases(data || [])
-    setLoading(false)
+    try {
+      const res = await fetch('/api/cases')
+      const { data } = await res.json()
+      setCases(data || [])
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   // 创建案例
@@ -111,12 +114,15 @@ export function AppProvider({ children, profile, initialCase }: { children: Reac
   // 加载历史记录列表（不含 rows）
   const loadHistories = useCallback(async (caseId: string) => {
     setLoading(true)
-    const res = await fetch(`/api/cases/${caseId}/histories`)
-    const { data } = await res.json()
-    const records = (data || []).map(normalizeHistory)
-    setHistories(records)
-    if (records.length > 0) setCurrentId(records[0].id)
-    setLoading(false)
+    try {
+      const res = await fetch(`/api/cases/${caseId}/histories`)
+      const { data } = await res.json()
+      const records = (data || []).map(normalizeHistory)
+      setHistories(records)
+      if (records.length > 0) setCurrentId(records[0].id)
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   // 按需加载完整 rows
