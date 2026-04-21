@@ -1,0 +1,82 @@
+---
+version: '3.8'
+
+services:
+  e-file-parser:
+    image: docker.io/e-file-parser-visualizer:latest
+    container_name: e-file-parser-visualizer
+
+    # Rainbond 服务配置
+    x-rainbond:
+      # 应用名称
+      app_name: e-file-parser-visualizer
+      # 应用组名称
+      app_group: data-visualization
+      # 应用描述
+      description: "E-file Parser and Visualizer - Power Grid Data Analysis Tool"
+
+      # 依赖配置
+      dependencies:
+        - service: internal
+
+      # 环境变量
+      environment:
+        - name: NODE_ENV
+          value: production
+        - name: DATABASE_PATH
+          value: /app/data/app.db
+
+      # 端口配置
+      ports:
+        - port: 3000
+          protocol: http
+          inner_port: 3000
+          name: web
+
+      # 存储卷配置
+      volumes:
+        - path: /app/data
+          name: app-data
+          type: local
+
+      # 资源限制
+      resources:
+        cpu: 1000m      # 1 CPU
+        memory: 512Mi   # 512MB
+
+      # 健康检查
+      health_check:
+        type: http
+        path: /
+        port: 3000
+        initial_delay: 30
+        timeout: 3
+        interval: 10
+        max_retries: 3
+
+    # 标准 Docker Compose 配置
+    ports:
+      - "3000:3000"
+
+    environment:
+      NODE_ENV: production
+
+    volumes:
+      - app-data:/app/data
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  app-data:
+    driver: local
+
+networks:
+  default:
+    driver: bridge

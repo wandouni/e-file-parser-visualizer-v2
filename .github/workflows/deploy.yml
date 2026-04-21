@@ -1,0 +1,52 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit || true
+
+      - name: Build
+        run: npm run build
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.DOCKER_REGISTRY }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: ${{ github.ref == 'refs/heads/master' }}
+          tags: |
+            ${{ secrets.DOCKER_REGISTRY }}/e-file-parser-visualizer:${{ github.run_number }}
+            ${{ secrets.DOCKER_REGISTRY }}/e-file-parser-visualizer:latest
+          cache-from: type=registry,ref=${{ secrets.DOCKER_REGISTRY }}/e-file-parser-visualizer:buildcache
+          cache-to: type=registry,ref=${{ secrets.DOCKER_REGISTRY }}/e-file-parser-visualizer:buildcache,mode=max

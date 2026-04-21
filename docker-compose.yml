@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: e-file-parser-viz
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      # 可选：添加其他环境变量
+      # DATABASE_URL: sqlite:///app/data/app.db
+    volumes:
+      # 持久化数据目录
+      - ./data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - e-file-network
+
+networks:
+  e-file-network:
+    driver: bridge
