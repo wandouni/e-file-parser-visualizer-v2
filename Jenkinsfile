@@ -37,7 +37,8 @@ pipeline {
                         branches: [[name: '*/master']],
                         userRemoteConfigs: [[
                             url: 'http://git.tsintergy.com:8070/shenjj/e-file-parser-visualizer-v2.git',
-                            credentialsId: 'dbd8bd2e-f8b8-44b3-a568-30ebf14c4a91'
+                            // d72ec4cf-d938-43f6-8648-23b0e32f1fc6
+                            credentialsId: '624227b6-889c-460b-89f0-da8ff5377f56'
                         ]]
                     ])
                 }
