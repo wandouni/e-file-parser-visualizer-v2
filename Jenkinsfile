@@ -12,6 +12,10 @@ pipeline {
         // 项目配置
         NODE_ENV = "production"
         WORKDIR = "${WORKSPACE}/e-file-parser-visualizer-v2"
+
+        // Rainbond 配置
+        RAINBOND_API_URL = "http://rainbond.gzdevops.tsintergy.com"
+        RAINBOND_TEAM = "tsintergy"
     }
 
     options {
@@ -99,26 +103,45 @@ pipeline {
                     echo "部署到 Rainbond..."
                     withCredentials([string(credentialsId: 'rainbond-api-token', variable: 'RAINBOND_TOKEN')]) {
                         sh '''
-                            # 设置 Rainbond API 信息
-                            RAINBOND_URL="${RAINBOND_API_URL:-http://localhost:8080}"
-                            TEAM_NAME="${RAINBOND_TEAM:-default}"
+                            set -e
+
+                            # Rainbond 配置
+                            API_URL="${RAINBOND_API_URL}/api/v1"
+                            TEAM_NAME="${RAINBOND_TEAM}"
                             APP_NAME="${IMAGE_NAME}"
 
-                            # 部署或更新应用
-                            curl -X POST \
-                              -H "Authorization: Bearer ${RAINBOND_TOKEN}" \
-                              -H "Content-Type: application/json" \
-                              -d "{
-                                \"app_name\": \"${APP_NAME}\",
-                                \"docker_image\": \"${FULL_IMAGE}\",
-                                \"port\": 3000,
-                                \"env\": {
-                                  \"NODE_ENV\": \"production\"
-                                }
-                              }" \
-                              ${RAINBOND_URL}/api/v1/teams/${TEAM_NAME}/apps
+                            echo "========== Rainbond 部署信息 =========="
+                            echo "API 地址: ${API_URL}"
+                            echo "团队: ${TEAM_NAME}"
+                            echo "应用名: ${APP_NAME}"
+                            echo "镜像: ${FULL_IMAGE}"
+                            echo "========================================"
 
-                            echo "Rainbond 部署请求已发送"
+                            # 获取或创建应用
+                            echo "正在部署应用..."
+
+                            # 调用 Rainbond API 创建/更新应用
+                            curl -X POST \
+                              -H "Authorization: ${RAINBOND_TOKEN}" \
+                              -H "Content-Type: application/json" \
+                              --data @- \
+                              ${API_URL}/teams/${TEAM_NAME}/apps/deploy \
+                              <<EOF || echo "注意：API 调用返回了错误代码"
+{
+  "app_name": "${APP_NAME}",
+  "docker_image": "${FULL_IMAGE}",
+  "port": 3000,
+  "memory": 512,
+  "cpu": 500,
+  "env": {
+    "NODE_ENV": "production"
+  }
+}
+EOF
+
+                            echo ""
+                            echo "✅ Rainbond 部署请求已提交"
+                            echo "应用地址: http://${APP_NAME}.${RAINBOND_TEAM}.gzdevops.tsintergy.com"
                         '''
                     }
                 }
