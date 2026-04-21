@@ -32,6 +32,10 @@ pipeline {
             steps {
                 script {
                     echo "检出代码..."
+                    // 增大 HTTP 缓冲区，解决 HTTP 422 / RPC failed 问题
+                    sh 'git config --global http.postBuffer 524288000'
+                    sh 'git config --global http.lowSpeedLimit 0'
+                    sh 'git config --global http.lowSpeedTime 999999'
                     checkout([
                         $class: 'GitSCM',
                         branches: [[name: '*/master']],
