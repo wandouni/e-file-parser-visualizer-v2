@@ -1,0 +1,435 @@
+#!groovy
+
+// 全局配置
+def global_config
+// 全局groovy方法
+def global_groovy_methods
+// extra_json_params
+/**
+固定参数，需要在参数配置中增加此配置项才能通过param.key使用，配置后平台挂掉后也可通过jenkins输入配置参数进行构建
+"id"
+"env"
+"alias_name"
+"uniq_code"
+"gitlab_address"
+"gitlab_branch"
+"rainbond_address"
+"curl_rainbond_address"
+"curl_rainbond_secretKey"
+"if_clear_workspace"
+"if_trigger_rainbond"
+"is_security_project"
+
+json参数，必须配置的项
+"extra_json_params"
+**/
+def json_config
+
+pipeline {
+    agent {
+        label "master"
+    }
+    
+    options {
+        // 限制保存构建的数量
+        buildDiscarder(logRotator(numToKeepStr: '5'))
+        // 禁止单个WorkSpace内发生并行构建
+        disableConcurrentBuilds()
+        // 构建超时时间 1小时
+        timeout(time: 1, unit: 'HOURS') 
+    }
+
+    // 全局变量
+    environment {
+        // 定义构建日志记录
+        CHANGE_LOGS_OF_STRING = ""
+        MAIL_RECIPIENTS = 'sanghx@tsintergy.com'
+        // 钉钉提醒接收者手机号
+        DINGDING_RECIPIENTS = "13770578194"
+        PROJECT_NAME = "东北互济子站 - 前端"
+        DINGDING_WEBHOOK = "https://oapi.dingtalk.com/robot/send?access_token=fa497ec6968e22668549a2bc165d1daae60d21fff83e00651b3f312222060b8d"
+    }
+    
+    stages {
+        stage('parse json params') {
+            steps {
+                script {
+                    if (!params.extra_json_params) {
+                        echo "extra_json_params参数不能为空"
+                        currentBuild.result = 'FAILURE'
+                        sh "exit 1"
+                    }
+                    echo "json参数 -> ${params.extra_json_params}"
+                    json_config = readJSON text: params.extra_json_params
+                }
+            }
+        }
+
+        stage('clear workspace') {
+            when {
+                expression {
+                    return json_config.if_clear_workspace
+                }
+            }
+            steps {
+                script {
+                    sh "rm -rf *"
+                }
+            }
+        }
+
+        stage('load global configuration') {
+            steps {
+                script {
+                    configFileProvider([configFile(fileId: "6a156010-008f-4e68-9a61-01e0f5a4d1b4", variable: 'FE_GLOBAL_CONFIG_PATH', targetLocation: "global-config.json")]) {
+                        // 载入全局配置
+                        global_config = readJSON file: "$FE_GLOBAL_CONFIG_PATH"
+                        sh "cat ${FE_GLOBAL_CONFIG_PATH}"
+                    }
+                    configFileProvider([configFile(fileId: "80389cac-9fc6-4eae-ab8c-aa7c9fb9417d", variable: 'FE_GROOVY_COMMON_PATH', targetLocation: "global-groovy-methods.groovy")]) {
+                        // 载入定义的公共groovy方法
+                        global_groovy_methods = load("$FE_GROOVY_COMMON_PATH")
+                        echo "全局groovy方法路径 -> ${FE_GROOVY_COMMON_PATH}"
+                    }
+                }
+            }
+        }
+
+        stage("define environment") {
+            steps {
+                script {
+                    // 仓库认证token
+                    CREDENTIALS_ID = global_config.CREDENTIALS_ID
+                    // 分支
+                    GIT_BRANCH = json_config.gitlab_branch
+                    // 代码仓库地址
+                    GIT_REPO = json_config.gitlab_address.endsWith(".git") ? json_config.gitlab_address : "${json_config.gitlab_address}.git"
+                    // 主项目构建目录
+                    BUILD_DIR = "${WORKSPACE}/tmos"
+                    // 是否为安评项目
+                    IS_SECURITY_PROJECT = json_config.is_security_project
+                    // 安评项目构建分支
+                    GIT_BRANCH_ADMIN = global_config.GIT_BRANCH_ADMIN
+                    // 安评项目仓库地址
+                    GIT_REPO_ADMIN = global_config.GIT_REPO_ADMIN
+                    // 安排项目构建目录
+                    BUILD_DIR_ADMIN = "${WORKSPACE}/admin"
+                    // 版本信息
+                    def image_version = global_groovy_methods.getImageVersionFromBranch(GIT_BRANCH)
+                    def package_env = json_config.alias_name
+                    def version_env = "${json_config.env}${image_version}"
+                    // docker构建镜像tag
+                    DOCKER_BUILD_TAG = "${global_config.DOCKER_IMAGE_TAG_PREFIX}:${package_env}-${version_env}"
+                    ARCHIVE_NAME = "dist.zip"
+                    // nodejs版本
+                    NODE_VERSION_NAME = global_config.NODE_VERSION_NAME
+                    // npm源
+                    NPM_REGISTRY = global_config.NPM_REGISTRY
+                    GIT_USER_NAME = global_config.GIT_USER_NAME
+                    GIT_USER_EMAIL = global_config.GIT_USER_EMAIL
+                    GIT_PASSWORD = global_config.GIT_PASSWORD
+                    // 平台前端地址
+                    TRIGGER_URL = global_config.TRIGGER_URL
+                    TRIGGER_ID = json_config.id
+                    // 是否触发rainbond构建
+                    IF_TRIGGER_RAINBOND = json_config.curl_rainbond_address && json_config.curl_rainbond_secretKey && json_config.if_trigger_rainbond
+                }
+
+
+            }
+        }
+
+        stage('parallel build') {
+            // 并行阶段中的某个阶段失败后，就让其他正在执行的阶段都中止
+            failFast true
+            parallel {
+                stage('build tmos') {
+                    steps {
+                        // 拉取代码
+                        ansiColor("xterm") {
+                            dir("${BUILD_DIR}") {
+                                git url: "${GIT_REPO}", branch: "${GIT_BRANCH}", credentialsId: "${CREDENTIALS_ID}"
+                            }
+                        }
+                        script {
+                            installCommand = global_groovy_methods.getInstallCommand(BUILD_DIR)
+                            installTool = global_groovy_methods.getPackageManagementCommand(BUILD_DIR)
+                            // 若放置于获取代码前，第一次构建会将载入的配置文件删除，拉取代码操作会清空目录
+                            configFileProvider([configFile(fileId: "b7049e42-87a4-4bb9-9ad5-997254caefa7", variable: 'FE_DOCKERFILE_COMMON_PATH', targetLocation: "tmos/.docker-inject/Dockerfile")]) {
+                                // 将全局Dockerfile注入到项目中的.docker-inject目录
+                                def global_dockerfile_path = "$FE_DOCKERFILE_COMMON_PATH"
+                                echo "全局docker配置路径 -> ${global_dockerfile_path}"
+                            }
+                            configFileProvider([configFile(fileId: "6ec31bd6-da31-4b7e-9d4c-5cf351f8fba8", variable: 'FE_NGINX_CONFIG_COMMON_PATH', targetLocation: "tmos/.docker-inject/nginx.conf")]) {
+                                // 将全局nginx配置注入到项目中的.docker-inject目录
+                                def global_nginx_config_path = "$FE_NGINX_CONFIG_COMMON_PATH"
+                                echo "全局nginx配置路径 -> ${global_nginx_config_path}"
+                            }
+                            configFileProvider([configFile(fileId: "9a19312c-c94a-4378-8829-2fe6685ae596", variable: 'FE_DOCKER_ENTRYPOINT_SH_PATH', targetLocation: "tmos/.docker-inject/docker-entrypoint.sh")]) {
+                                // 将全局docker-entrypoint.sh配置注入到项目中的.docker-inject目录
+                                def global_docker_entrypoint_sh_path = "$FE_DOCKER_ENTRYPOINT_SH_PATH"
+                                echo "全局docker-entrypoint.sh配置路径 -> ${global_docker_entrypoint_sh_path}"
+                            }
+                        }
+                        // 安装依赖
+                        ansiColor("xterm") {
+                            dir("${BUILD_DIR}") {
+                                nodejs(nodeJSInstallationName: NODE_VERSION_NAME) {
+                                    retry(3) {
+                                        sh "${installCommand} --registry ${NPM_REGISTRY}"
+                                    }
+                                }
+                            }
+                        }
+                        // 更新依赖，提交commit
+                        script {
+                            if (json_config.update_deps_type) {
+                                dir("${BUILD_DIR}") {
+                                    nodejs(nodeJSInstallationName: NODE_VERSION_NAME) {
+                                        sh "${installTool} run update-pkgs --dry-run --updateVersion=${json_config.update_deps_type}"
+                                        retry(3) {
+                                            sh "${installCommand} --no-frozen-lockfile --registry ${NPM_REGISTRY} --strict-peer-dependencies=false"
+                                        }
+                                    }
+                                    // 若有未提交内容，则提交一个commit，推送代码
+                                    def urlArr = GIT_REPO.split('//');
+                                    def protocol = urlArr[0];
+                                    def host = urlArr[1];
+                                    def statusInfo = sh(script: "git status -s", returnStdout: true).trim();
+                                    sh """
+                                      if [ '${statusInfo}' != '' ]; 
+                                      then
+                                        git config remote.origin.url ${protocol}//${GIT_USER_NAME}:${GIT_PASSWORD}@${host}
+                                        git config user.email ${GIT_USER_EMAIL}
+                                        git config user.name ${GIT_USER_NAME}
+
+                                        git add package.json pnpm-lock.yaml
+                                        git commit -m 'chore(version): update pkg'
+
+                                        git pull origin ${GIT_BRANCH}
+                                        git push origin ${GIT_BRANCH}                                        
+                                      fi
+                                    """
+                                }
+                            }
+                        }
+                        // 打包
+                        ansiColor("xterm") {
+                            dir("${BUILD_DIR}") {
+                                nodejs(nodeJSInstallationName: NODE_VERSION_NAME) {
+                                    retry(2) {
+                                        sh "${installTool} build"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                stage('build admin') {
+                    // 多节点构建，遇到性能瓶颈时再使用，现在差不太多
+                    // agent {
+                    //     label "node1"
+                    // }
+                    when {
+                        // beforeAgent true
+                        expression {
+                            return IS_SECURITY_PROJECT
+                        }
+                    }
+                    steps {
+                        // 拉取代码
+                        ansiColor("xterm") {
+                            dir("${BUILD_DIR_ADMIN}") {
+                                git url: "${GIT_REPO_ADMIN}", branch: "${GIT_BRANCH_ADMIN}", credentialsId: "${CREDENTIALS_ID}"
+                            }
+                        }
+                        script {
+                            installCommand2 = global_groovy_methods.getInstallCommand(BUILD_DIR_ADMIN)
+                            installTool2 = global_groovy_methods.getPackageManagementCommand(BUILD_DIR_ADMIN)
+                        }
+
+                        // 安装依赖
+                        ansiColor("xterm") {
+                            dir("${BUILD_DIR_ADMIN}") {
+                                sh "${installCommand2} --registry ${NPM_REGISTRY}"
+                            }
+                        }    
+                        // 打包
+                        ansiColor("xterm") {
+                            dir("${BUILD_DIR_ADMIN}") {
+                                nodejs(nodeJSInstallationName: NODE_VERSION_NAME) {
+                                    sh "${installTool2} build:hunan"
+                                }
+                            }
+                        }
+                        
+                    }
+                }
+            }
+        }
+
+        stage('zip') {
+            steps {
+                script {
+                    if (IS_SECURITY_PROJECT) {
+                        dir("${BUILD_DIR_ADMIN}") {
+                            // 将admin打包后的文件移动到tmos的build文件中
+                            sh "cp -r ./dist/* ${BUILD_DIR}/dist"
+                        }
+                    }
+                }
+                dir("${BUILD_DIR}/dist") {
+                    sh "zip -r dist.zip ./*"
+                }
+            }
+        }
+
+        stage('Archive') {
+            steps {        
+                dir("${BUILD_DIR}/dist") {
+                    archiveArtifacts artifacts: 'dist.zip', fingerprint: true 
+                }
+            }
+        }
+
+        stage('Install') {
+            steps {
+                ansiColor('xterm') {
+                    dir("${BUILD_DIR}") {
+                        script {
+                            // 优先使用项目中的Dockerfile和nginx配置
+                            def projectDockerfileExist = fileExists("Dockerfile")
+                            def projectNginxConfExist = fileExists(".docker/nginx.conf")
+                            def projectDockerEntrypointExist = fileExists(".docker/docker-entrypoint.sh")
+                            if (projectDockerfileExist) {
+                                echo "使用项目本地Dockerfile"
+                            }
+                            if (projectNginxConfExist) {
+                                echo "使用项目本地nginx配置"
+                            }
+                            def dockerfilePath = projectDockerfileExist ? "Dockerfile" : ".docker-inject/Dockerfile"
+                            def nginxConfPath = projectNginxConfExist ? ".docker/nginx.conf" : ".docker-inject/nginx.conf"
+                            def dockerEntrypointPath = projectDockerEntrypointExist ? ".docker/docker-entrypoint.sh" : ".docker-inject/docker-entrypoint.sh"
+                            sh """
+                                docker build -t ${DOCKER_BUILD_TAG} -f ${dockerfilePath} \
+                                    --build-arg ARG_TRIGGER_URL=${TRIGGER_URL} \
+                                    --build-arg ARG_TRIGGER_ID=${TRIGGER_ID} \
+                                    --build-arg ARG_NGINX_PATH=${nginxConfPath} \
+                                    --build-arg ARG_DOCKER_ENTRYPOINT_SH_PATH=${dockerEntrypointPath} .
+                            """
+                            sh "docker push ${DOCKER_BUILD_TAG}"
+                            sh "docker rmi ${DOCKER_BUILD_TAG}"
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Trigger') {
+            when {
+                expression {
+                    return IF_TRIGGER_RAINBOND
+                }
+            }
+            steps {
+                script {
+                    sh "curl -d '{\"secret_key\": \"${json_config.curl_rainbond_secretKey}\"}' -H \"Content-type: application/json\" -X POST ${json_config.curl_rainbond_address}"
+                }
+            }
+        }
+    }
+
+    post() {
+        success {
+            script {
+                def extraRainbondTitleDes = IF_TRIGGER_RAINBOND ? "（已触发）" : "（未触发）"
+                sh """
+                    curl '${global_config.PROJECT_DINGTALK_ROBOT_WEBHOOK}' \
+                    -H 'Content-Type: application/json' \
+                    -d '
+                    {"msgtype": "actionCard",
+                        "actionCard": {
+                        "title":"${JOB_BASE_NAME} 构建成功",
+                        "text": "${JOB_BASE_NAME} **环境构建成功**", 
+                        "btnOrientation": "0", 
+                        "btns": [
+                            {"title": "jenkins地址", "actionURL": "dingtalk://dingtalkclient/page/link?url=${BUILD_URL}&pc_slide=false"}
+                            {"title": "rainbond地址${extraRainbondTitleDes}","actionURL": "dingtalk://dingtalkclient/page/link?url=${json_config.rainbond_address}&pc_slide=false"}
+                            {"title": "应用地址","actionURL": "dingtalk://dingtalkclient/page/link?url=${json_config.deploy_url}&pc_slide=false"}
+                        ]
+                        }
+                    }'
+                """
+            }
+        }
+        failure {
+            script {
+                sh """
+                    curl '${global_config.PROJECT_DINGTALK_ROBOT_WEBHOOK}' \
+                    -H 'Content-Type: application/json' \
+                    -d '
+                    {"msgtype": "actionCard",
+                    "actionCard": {
+                        "title":"${JOB_BASE_NAME} 构建失败",
+                        "text": "${JOB_BASE_NAME} **环境构建失败**", 
+                        "btnOrientation": "0", 
+                        "btns": [
+                        {"title": "jenkins地址", "actionURL": "dingtalk://dingtalkclient/page/link?url=${BUILD_URL}&pc_slide=false"}
+                        ]
+                    }
+                    }'
+                """
+            }
+        }
+        aborted {
+            script {
+                sh """
+                    curl '${global_config.PROJECT_DINGTALK_ROBOT_WEBHOOK}' \
+                    -H 'Content-Type: application/json' \
+                    -d '
+                    {"msgtype": "actionCard",
+                    "actionCard": {
+                        "title":"${JOB_BASE_NAME} 构建取消",
+                        "text": "${JOB_BASE_NAME} **环境构建取消**", 
+                        "btnOrientation": "0", 
+                        "btns": [
+                        {"title": "jenkins地址", "actionURL": "dingtalk://dingtalkclient/page/link?url=${BUILD_URL}&pc_slide=false"}
+                        ]
+                    }
+                    }'
+                """
+            }
+        }
+        always {
+            script {
+                def webhook = env.DINGDING_WEBHOOK
+                def project_name = env.PROJECT_NAME
+                def buildStatus = currentBuild.result
+                def buildNumber = env.BUILD_NUMBER
+                def buildUrl = env.BUILD_URL
+                def atPerson = env.DINGDING_RECIPIENTS  // 钉钉用户手机号
+
+                def statusColor = buildStatus == "SUCCESS" ? "green" : buildStatus == "ABORTED" ? "orange" : "red"
+                
+                def statusTitle = buildStatus == "SUCCESS" ? "成功" : buildStatus == "ABORTED" ? "暂停" : "失败"
+
+                def message = [
+                    msgtype: "markdown",
+                    markdown: [
+                        title: "构建通知",
+                        text: "#### **${project_name}** \n - **构建状态**：<font color=\"${statusColor}\">${statusTitle}</font> \n - **构建编号**：${buildNumber} \n - **构建详情**：[点击查看](${buildUrl})"
+                    ],
+                    at: [
+                        atMobiles: [atPerson],
+                        isAtAll: false
+                    ]
+                ]
+
+                sh "curl -H 'Content-Type: application/json' -d '${groovy.json.JsonOutput.toJson(message)}' -X POST ${webhook}"
+            }
+        }
+    }
+
+}
+

@@ -1,5 +1,5 @@
 # 构建阶段
-FROM node:20-alpine AS builder
+FROM registry.tsintergy.com/tsintergy/node:20-alpine AS builder
 
 WORKDIR /app
 
@@ -16,7 +16,7 @@ COPY . .
 RUN npm run build
 
 # 运行阶段
-FROM node:20-alpine
+FROM registry.tsintergy.com/tsintergy/node:20-alpine
 
 WORKDIR /app
 
