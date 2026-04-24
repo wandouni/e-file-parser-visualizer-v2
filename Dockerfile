@@ -1,5 +1,5 @@
 # Stage 1: Build (install deps + compile Next.js)
-FROM registry.tsintergy.com/tsintergy/node:hn-20 AS builder
+FROM registry.tsintergy.com/tsintergy/node:hn-18 AS builder
 
 WORKDIR /app
 
@@ -10,7 +10,7 @@ COPY . .
 RUN npm run build
 
 # Stage 2: Runtime (production deps only + build artifacts)
-FROM registry.tsintergy.com/tsintergy/node:hn-20
+FROM registry.tsintergy.com/tsintergy/node:hn-18
 
 WORKDIR /app
 
