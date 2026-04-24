@@ -87,7 +87,7 @@ pipeline {
                             branches: [[name: "${GIT_BRANCH}"]],
                             userRemoteConfigs: [[
                                 url: "${GIT_REPO}",
-                                credentialsId: "1082e561-a22d-4cf2-b314-1d40f051afe6"
+                                credentialsId: "7f349348-35ee-4287-b7c7-514668b722b8"
                             ]]
                         ])
                     }
